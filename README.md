@@ -1,5 +1,42 @@
-# Vue 3 + Vite
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
 
-Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+
+# Mapbox Terrain Viewer
+
+Vue 3 + Vite app displaying 3D terrain in Los Angeles using Mapbox GL.
+
+## Setup
+
+```bash
+# Install dependencies
+pnpm install
+
+# Create .env file
+cp .env.example .env
+```
+
+Add your Mapbox token to `.env`:
+```
+VITE_MAPBOX_TOKEN=your_token_here
+```
+
+Get a token at https://www.mapbox.com/
+
+## Run
+
+```bash
+# Development
+pnpm dev
+
+# Build
+pnpm build
+
+# Preview build
+pnpm preview
+```
+
+## Stack
+
+- Vue 3
+- Vite
+- Mapbox GL JS
