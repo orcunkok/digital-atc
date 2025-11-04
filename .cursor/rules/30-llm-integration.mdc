@@ -1,0 +1,23 @@
+---
+title: LLM Integration & Validation
+description: Auto-attach for code that calls models, assembles prompts, or validates JSON. Enforce JSON-only responses and re-prompt strategy.
+attachments:
+  mode: auto
+paths:
+  include:
+    - "src/llm/**"
+    - "prompts/**"
+    - "schemas/**"
+guidance:
+  - Always load schemas from disk: response.schema.json and request.schema.json.
+  - Assemble prompts using prompts/system_pilot.txt and prompts/developer_pilot.txt.
+  - Force JSON-only output; validate strictly against response.schema.json.
+  - On failure, re-prompt with a short correction (do not silently fix fields).
+  - Ensure readback includes callsign with ICAO/NATO phonetics and FAA number words.
+  - Prohibit changing schema field names; use null for unset fields.
+  - Timeouts and retries: set sane defaults and surface errors to UI logs.
+notes:
+  - Keep provider-specific code isolated; allow swapping models via env config.
+alwaysApply: false
+Globs: src/llm/, prompts/, schemas/**
+---

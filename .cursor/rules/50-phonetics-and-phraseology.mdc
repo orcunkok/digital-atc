@@ -1,0 +1,19 @@
+---
+title: Phraseology, Phonetics, and Numbers
+description: Always attach concise rules to enforce ICAO/NATO phonetics and FAA number words in readbacks.
+attachments:
+  mode: always
+paths:
+  include:
+    - "prompts/**"
+    - "lexicon/**"
+    - "schemas/**"
+guidance:
+  - Callsign: letters -> ICAO/NATO (e.g., N123AB -> November … Alfa Bravo).
+  - Digits -> FAA/ICAO words: 0 Zero, 1 Wun, 2 Too, 3 Tree, 4 Fower, 5 Fife, 6 Six, 7 Seven, 8 Eight, 9 Niner.
+  - Altitudes in words (no bare digits in readback): e.g., 1500 -> “one thousand five hundred”.
+  - Keep readbacks concise, include callsign, mirror key elements only.
+notes:
+  - Use lexicon/phonetics.json and lexicon/altitude_words.md for validation helpers.
+alwaysApply: true
+---

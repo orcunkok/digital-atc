@@ -1,0 +1,23 @@
+---
+alwaysApply: true
+
+attachments:
+  mode: always
+paths:
+  include:
+    - "**/*"
+guidance:
+  - Use Vite + Vue with JavaScript (no TypeScript). Raw CSS only.
+  - Use Mapbox GL JS for map layers. No other map libs.
+  - Keep code formatted with Prettier (80 char print width).
+  - Do not introduce state managers or CSS frameworks.
+  - Respect repo schemas for agent IO:
+    - Input: schemas/request.schema.json
+    - Output: schemas/response.schema.json
+  - Read/write distances as NM, speed kt, altitude ft, VS fpm, heading deg.
+  - Do not change schemas without updating examples and validators.
+  - Do not hardcode API keys; read from environment.
+notes:
+  - Prefer simple, explicit functions. Minimize abstractions for MVP speed.
+  - Keep diffs small and files cohesive. Avoid creating new directories unless necessary.
+---

@@ -1,0 +1,21 @@
+{
+    "id": "scenario_oak_ifr_vectors_goaround",
+    "title": "KOAK vectors to final with runway incursion go-around",
+    "callsign": "N123AB",
+    "startState": {
+      "lat": 37.70,
+      "lon": -122.35,
+      "altitudeFt": 3000,
+      "headingDeg": 20,
+      "groundspeedKt": 120,
+      "vsFpm": 0,
+      "phase": "approach"
+    },
+    "runwayHeadingDeg": 300,
+    "events": [
+      { "t": 5, "type": "ATC", "text": "N123AB, fly heading 280, descend and maintain 2,000, vectors ILS three zero." },
+      { "t": 25, "type": "ATC", "text": "Turn right heading 330, intercept final approach course, maintain two thousand, cleared approach." },
+      { "t": 55, "type": "INCIDENT", "subtype": "RUNWAY_INCURSION", "runway": "30" },
+      { "t": 56, "type": "ATC", "text": "N123AB, go around, fly runway heading, climb to two thousand." }
+    ]
+  }

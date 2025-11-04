@@ -1,0 +1,17 @@
+---
+title: Security & Configuration
+description: Always attach lightweight guardrails to avoid leaking secrets and committing keys.
+attachments:
+  mode: always
+paths:
+  include:
+    - "**/*"
+guidance:
+  - Never hardcode API keys or tokens. Use env files and .gitignore them.
+  - Do not log full requests/responses with secrets; redact before logging.
+  - Keep Mapbox token in env; do not commit .env.
+  - Avoid introducing analytics/telemetry for MVP unless explicitly requested.
+notes:
+  - If adding a backend, prefer local-only by default for development.
+alwaysApply: true
+---

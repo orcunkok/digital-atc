@@ -1,0 +1,25 @@
+---
+title: Frontend (Vue + Mapbox) Rules
+description: Auto-attach for UI, sim, and visualization edits under src/. Enforce JS-only Vue, Mapbox patterns, and safe unit handling.
+attachments:
+  mode: auto
+paths:
+  include:
+    - "src/**"
+  exclude:
+    - "src/sim/**"
+    - "src/llm/**"
+guidance:
+  - Vue 3 SFCs with <script> (no TypeScript) and raw CSS. Avoid UI kits.
+  - Use Mapbox GL JS layers:
+    - aircraft symbol (rotation by heading), trail line, planned route dashed line,
+      TFR/weather fill layers, traffic icons/labels.
+  - Keep rendering decoupled from sim step; requestAnimationFrame for map updates.
+  - Never mutate schemas; import and consume them for validation only.
+  - Copy-pasteable CLI in docs/examples using bash fences without "$ " prompt.
+  - Avoid heavy dependencies; prefer vanilla utilities for math and formatting.
+notes:
+  - When reading response JSON, clamp and sanity-check numeric ranges before applying.
+  - Avoid reactivity pitfalls: keep sim state in a dedicated module, emit events to UI.
+Globs: src/, public/, vite.config.js, index.html
+---

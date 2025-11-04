@@ -1,0 +1,70 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "PilotAgentRequest",
+    "type": "object",
+    "required": ["atcText", "callsign", "phase", "state"],
+    "additionalProperties": false,
+    "properties": {
+      "atcText": { "type": "string" },
+      "callsign": { "type": "string", "description": "e.g., N123AB" },
+      "phase": { "type": "string", "enum": ["enroute", "departure", "arrival", "approach", "missed"] },
+      "state": {
+        "type": "object",
+        "required": ["lat", "lon", "altitudeFt", "headingDeg", "groundspeedKt", "vsFpm"],
+        "additionalProperties": false,
+        "properties": {
+          "lat": { "type": "number" },
+          "lon": { "type": "number" },
+          "altitudeFt": { "type": "number" },
+          "headingDeg": { "type": "number" },
+          "groundspeedKt": { "type": "number" },
+          "vsFpm": { "type": "number" }
+        }
+      },
+      "constraints": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "noGoAreas": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "name", "polygon", "minAltFt", "maxAltFt"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "polygon": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": [{ "type": "number" }, { "type": "number" }],
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                },
+                "minAltFt": { "type": "number" },
+                "maxAltFt": { "type": "number" }
+              }
+            }
+          }
+        }
+      },
+      "traffic": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["id", "lat", "lon", "altitudeFt", "headingDeg", "groundspeedKt"],
+          "additionalProperties": false,
+          "properties": {
+            "id": { "type": "string" },
+            "lat": { "type": "number" },
+            "lon": { "type": "number" },
+            "altitudeFt": { "type": "number" },
+            "headingDeg": { "type": "number" },
+            "groundspeedKt": { "type": "number" }
+          }
+        }
+      }
+    }
+  }

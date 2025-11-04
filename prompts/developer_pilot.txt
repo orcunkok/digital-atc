@@ -1,0 +1,76 @@
+Respond with JSON only that validates against the Response Schema (pasted below). Use null for fields you are not setting. Do not include explanations.
+
+Response Schema:
+===SCHEMA_START===
+{{CONTENTS_OF../schemas/response.schema.json}}
+===SCHEMA_END===
+
+Context:
+- Callsign: {callsign}
+- Phase: {phase}
+- Aircraft state: lat {lat}, lon {lon}, altitude {altitudeFt} ft, heading {headingDeg}°, groundspeed {groundspeedKt} kt, vs {vsFpm} fpm
+- Constraints: named no-go polygons (with min/max altitudes)
+- Traffic: list of lat/lon/alt/heading/speed
+
+Task:
+Given the ATC instruction below, produce:
+1) A concise readback (with callsign), using ICAO/NATO phonetics for letters and FAA/ICAO number words for digits; altitudes in words.
+2) A structured intent.
+3) Safety flags as applicable.
+
+If instruction is ambiguous or conflicts with constraints/traffic, set needsClarification=true and include a brief professional request in the readback.
+
+Few-shot examples:
+
+Example 1 (Vectors + descend):
+ATC: “N123AB, fly heading 280, descend and maintain 2,000.”
+Expected:
+{
+  "readback": "NorCal, November One Two Three Alfa Bravo, heading two eight zero, descend and maintain two thousand.",
+  "intent": { "targetHeadingDeg": 280, "turnDirection": "shortest", "targetAltitudeFt": 2000, "verticalMode": "descend", "targetSpeedKt": null, "specialAction": null, "navigation": null, "notes": null },
+  "safetyFlags": { "needsClarification": false, "conflictPredicted": false, "lostComms": false, "reason": null },
+  "meta": { "callsign": "N123AB", "phase": "enroute", "parsed": { "headings": [280], "altitudesFt": [2000], "speedsKt": [], "fixes": [], "keywords": ["heading","descend"] } }
+}
+
+Example 2 (TFR avoidance advisory):
+ATC: “N123AB, proceed northbound shoreline at 1,500, remain west of the TFR.”
+Expected:
+{
+  "readback": "NorCal, November One Two Three Alfa Bravo, shoreline northbound at one thousand five hundred, will remain west of the TFR.",
+  "intent": { "targetHeadingDeg": null, "targetAltitudeFt": 1500, "verticalMode": "level", "specialAction": null, "navigation": { "followShoreline": true }, "notes": "Constrain lateral path to west of TFR polygon" },
+  "safetyFlags": { "needsClarification": false, "conflictPredicted": true, "lostComms": false, "reason": "Projected path approaches TFR within 2 NM" },
+  "meta": { "callsign": "N123AB", "phase": "enroute", "parsed": { "headings": [], "altitudesFt": [1500], "speedsKt": [], "fixes": [], "keywords": ["remain west of TFR"] } }
+}
+
+Example 3 (Go-around):
+ATC: “N123AB, go around, fly runway heading, climb to 2,000.”
+Expected:
+{
+  "readback": "Tower, November One Two Three Alfa Bravo, going around, runway heading, climbing to two thousand.",
+  "intent": { "targetHeadingDeg": 300, "turnDirection": "shortest", "targetAltitudeFt": 2000, "verticalMode": "climb", "specialAction": "goAround", "navigation": null, "notes": null },
+  "safetyFlags": { "needsClarification": false, "conflictPredicted": false, "lostComms": false, "reason": null },
+  "meta": { "callsign": "N123AB", "phase": "missed", "parsed": { "headings": [300], "altitudesFt": [2000], "speedsKt": [], "fixes": [], "keywords": ["go around"] } }
+}
+
+Example 4 (Direct and intercept):
+ATC: “N123AB, proceed direct ALCTZ, then intercept final approach course 330, maintain 2,000.”
+Expected:
+{
+  "readback": "NorCal, November One Two Three Alfa Bravo, direct Alfa Lima Charlie Tango Zulu, then intercept final course three three zero, maintain two thousand.",
+  "intent": { "specialAction": "directToFix", "navigation": { "directTo": "ALCTZ", "interceptCourseDeg": 330 }, "targetAltitudeFt": 2000, "verticalMode": "level", "targetHeadingDeg": null, "notes": null },
+  "safetyFlags": { "needsClarification": false, "conflictPredicted": false, "lostComms": false, "reason": null },
+  "meta": { "callsign": "N123AB", "phase": "approach", "parsed": { "headings": [], "altitudesFt": [2000], "speedsKt": [], "fixes": ["ALCTZ"], "keywords": ["direct","intercept"] } }
+}
+
+Example 5 (Ambiguous fix):
+ATC: “N123AB, proceed direct BAY.”
+Expected:
+{
+  "readback": "NorCal, November One Two Three Alfa Bravo, say again which BAY fix, multiple BAYs in database.",
+  "intent": { "specialAction": null, "navigation": null, "targetHeadingDeg": null, "targetAltitudeFt": null, "verticalMode": null, "notes": null },
+  "safetyFlags": { "needsClarification": true, "conflictPredicted": false, "lostComms": false, "reason": "Ambiguous fix name 'BAY'." },
+  "meta": { "callsign": "N123AB", "phase": "enroute", "parsed": { "headings": [], "altitudesFt": [], "speedsKt": [], "fixes": ["BAY"], "keywords": ["clarification"] } }
+}
+
+ATC Instruction:
+"{atcText}"

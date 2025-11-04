@@ -1,0 +1,87 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "PilotAgentResponse",
+    "type": "object",
+    "required": ["readback", "intent", "safetyFlags", "meta"],
+    "additionalProperties": false,
+    "properties": {
+      "readback": {
+        "type": "string",
+        "description": "Concise standard ATC pilot readback. Include callsign, use ICAO/NATO phonetics for letters and FAA/ICAO number words."
+      },
+      "intent": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "targetHeadingDeg": { "type": ["number", "null"], "minimum": 0, "maximum": 360 },
+          "targetTrackDeg": { "type": ["number", "null"], "minimum": 0, "maximum": 360 },
+          "turnDirection": { "type": ["string", "null"], "enum": ["left", "right", "shortest", null] },
+          "targetAltitudeFt": { "type": ["number", "null"], "minimum": -1000, "maximum": 60000 },
+          "altitudeRestriction": {
+            "type": ["string", "null"],
+            "enum": ["at", "atOrAbove", "atOrBelow", "climbVia", "descendVia", null]
+          },
+          "targetSpeedKt": { "type": ["number", "null"], "minimum": 40, "maximum": 400 },
+          "verticalMode": { "type": ["string", "null"], "enum": ["climb", "descend", "level", null] },
+          "specialAction": {
+            "type": ["string", "null"],
+            "enum": [
+              "goAround",
+              "hold",
+              "resumeOwnNavigation",
+              "interceptFinal",
+              "directToFix",
+              "maintainVisualSeparation",
+              "cancelApproach",
+              "expedite",
+              null
+            ]
+          },
+          "navigation": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "properties": {
+              "directTo": { "type": ["string", "null"] },
+              "interceptCourseDeg": { "type": ["number", "null"], "minimum": 0, "maximum": 360 },
+              "followShoreline": { "type": ["boolean", "null"] }
+            }
+          },
+          "notes": { "type": ["string", "null"] }
+        }
+      },
+      "safetyFlags": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["needsClarification", "conflictPredicted", "lostComms"],
+        "properties": {
+          "needsClarification": { "type": "boolean" },
+          "conflictPredicted": { "type": "boolean" },
+          "lostComms": { "type": "boolean" },
+          "reason": { "type": ["string", "null"] }
+        }
+      },
+      "meta": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["callsign", "phase"],
+        "properties": {
+          "callsign": { "type": "string" },
+          "phase": {
+            "type": "string",
+            "enum": ["enroute", "departure", "arrival", "approach", "missed"]
+          },
+          "parsed": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "headings": { "type": "array", "items": { "type": "number" } },
+              "altitudesFt": { "type": "array", "items": { "type": "number" } },
+              "speedsKt": { "type": "array", "items": { "type": "number" } },
+              "fixes": { "type": "array", "items": { "type": "string" } },
+              "keywords": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        }
+      }
+    }
+  }

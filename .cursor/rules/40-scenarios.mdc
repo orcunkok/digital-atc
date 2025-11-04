@@ -1,0 +1,19 @@
+---
+title: Scenarios & Events
+description: Auto-attach for scenario JSONs and event timeline code. Keep scenario format stable and deterministic.
+attachments:
+  mode: auto
+paths:
+  include:
+    - "scenarios/**"
+guidance:
+  - Scenario JSON fields: id, title, callsign, startState, events[].
+  - Event types: ATC, ADD_TFR, ADD_TRAFFIC, INCIDENT (minimal set).
+  - Keep coordinates (lon, lat) consistent; polygons closed; alt bands defined.
+  - Do not bake provider secrets or internal URLs into scenarios.
+  - Keep times (t) in seconds; avoid real-time coupling in JSON.
+notes:
+  - Provide small example generators if needed, but do not add runtime deps.
+alwaysApply: false
+Globs: scenarios/**
+---

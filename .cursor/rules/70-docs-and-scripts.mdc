@@ -1,0 +1,19 @@
+---
+title: Docs & Scripts
+description: Auto-attach when editing README, docs, and small utilities. Keep examples minimal and accurate.
+attachments:
+  mode: auto
+paths:
+  include:
+    - "README.md"
+    - "docs/**"
+    - "prompts/**"
+guidance:
+  - Ensure examples match current schemas and prompt files.
+  - Shell examples must be copy-pasteable with ```bash fences and no leading "$ ".
+  - Keep instructions under 80 characters per line where reasonable.
+notes:
+  - Update docs/REFERENCES.md links if schemas or prompts change materially.
+alwaysApply: false
+Globs: README.md, docs/, prompts/
+---

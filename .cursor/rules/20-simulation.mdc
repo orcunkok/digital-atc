@@ -1,0 +1,24 @@
+---
+title: Simulation & Kinematics Rules
+description: Auto-attach when editing the sim and motion model. Prevent unit mistakes and unstable dynamics.
+attachments:
+  mode: auto
+paths:
+  include:
+    - "src/sim/**"
+guidance:
+  - State: { lat, lon, alt_ft, hdg_deg, gs_kt, vs_fpm }.
+  - Control targets: heading deg, altitude ft, speed kt; limit turn rate, VS, accel.
+  - Position update:
+    - distance_m = gs_kt * 0.51444 * dt_s
+    - Convert heading deg to radians for step.
+    - Use small-step equirectangular or great-circle approximation.
+  - Turn dynamics: cap heading rate to ~3 deg/s at 120 kt (bank-limited).
+  - VS limits: climb ~700 fpm, descend ~900 fpm (MVP defaults).
+  - Persist breadcrumb trail with decimation to reduce map load.
+  - Never block UI thread; run sim at ~10 Hz tick, render at 30–60 FPS.
+notes:
+  - Keep math helpers pure and unit-annotated in names (e.g., toRadians, nmToMeters).
+alwaysApply: false
+Globs: src/sim/**
+---
