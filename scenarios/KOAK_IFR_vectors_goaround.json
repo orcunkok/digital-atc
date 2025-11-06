@@ -5,7 +5,7 @@
     "startState": {
       "lat": 37.70,
       "lon": -122.35,
-      "altitudeFt": 3000,
+      "altitudeMeter": 1000,
       "headingDeg": 20,
       "groundspeedKt": 120,
       "vsFpm": 0,
