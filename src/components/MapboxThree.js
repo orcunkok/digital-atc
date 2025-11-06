@@ -4,18 +4,23 @@ import mapboxgl from 'mapbox-gl';
 
 /**
  * Creates a Three.js custom layer for Mapbox to display an aircraft GLB model
+ * All position updates use local coordinates (meters relative to origin)
  * @param {Object} options - Configuration options
- * @param {number} options.lat - Latitude of aircraft position
- * @param {number} options.lon - Longitude of aircraft position
- * @param {number} options.altitudeMeters - Altitude in meters
- * @param {number} options.headingDeg - Heading in degrees (default: 0)
+ * @param {mapboxgl.MercatorCoordinate} options.originMercator - Origin point in Mercator coordinates
+ * @param {number} options.scale - Scale factor from origin (meterInMercatorCoordinateUnits)
+ * @param {number} options.initialX - Initial x position in meters (east, default: 0)
+ * @param {number} options.initialY - Initial y position in meters (north, default: 0)
+ * @param {number} options.initialZ - Initial z position in meters (altitude, default: 0)
+ * @param {number} options.headingDeg - Initial heading in degrees (default: 0)
  * @param {string} options.modelPath - Path to GLB model (default: '/Airplane.glb')
  * @returns {Object} Mapbox custom layer object
  */
 export function createAircraftLayer({
-  lat,
-  lon,
-  altitudeMeters,
+  originMercator,
+  scale,
+  initialX = 0,
+  initialY = 0,
+  initialZ = 0,
   headingDeg = 0,
   modelPath = '/Airplane.glb',
 }) {
@@ -26,6 +31,10 @@ export function createAircraftLayer({
     onAdd: function (map, gl) {
       this.camera = new THREE.Camera();
       this.scene = new THREE.Scene();
+
+      // Store origin and scale for coordinate conversion
+      this.originMercator = originMercator;
+      this.scale = scale;
 
       // Add directional light
       const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -55,31 +64,11 @@ export function createAircraftLayer({
         (gltf) => {
           this.aircraft = gltf.scene;
 
-          // Convert lat/lon/altitude to Mercator coordinates
-          const mercatorCoord = mapboxgl.MercatorCoordinate.fromLngLat(
-            [lon, lat],
-            altitudeMeters
-          );
-
-          // Set position directly
-          this.aircraft.position.set(
-            mercatorCoord.x,
-            mercatorCoord.y,
-            mercatorCoord.z
-          );
+          // Set initial position using local coordinates
+          this.updatePosition(initialX, initialY, initialZ, headingDeg);
 
           // Get scale factor for proper sizing
-          const scale = mercatorCoord.meterInMercatorCoordinateUnits();
-          this.aircraft.scale.set(scale, -scale, scale);
-
-          // Rotate to fly horizontally (not pointing up like a rocket)
-          // Rotate -90 degrees around X axis to lay flat, then apply heading
-          const initialHeadingRad = (headingDeg * Math.PI) / 180;
-          this.aircraft.rotation.set(
-            -Math.PI / 2,
-            Math.PI - initialHeadingRad,
-            0
-          );
+          this.aircraft.scale.set(this.scale, -this.scale, this.scale);
 
           this.scene.add(this.aircraft);
           map.triggerRepaint();
@@ -109,28 +98,30 @@ export function createAircraftLayer({
       this.map.triggerRepaint();
     },
 
-    // Method to update aircraft position and heading
-    updatePosition: function (newLat, newLon, newAltitudeMeters, newHeadingDeg) {
+    /**
+     * Update aircraft position using local coordinates (meters)
+     * @param {number} x - East position in meters (relative to origin)
+     * @param {number} y - North position in meters (relative to origin)
+     * @param {number} z - Altitude in meters
+     * @param {number} headingDeg - Heading in degrees
+     */
+    updatePosition: function (x, y, z, headingDeg) {
       if (!this.aircraft) {
         return; // Aircraft not loaded yet
       }
 
-      // Convert lat/lon/altitude to Mercator coordinates
-      const mercatorCoord = mapboxgl.MercatorCoordinate.fromLngLat(
-        [newLon, newLat],
-        newAltitudeMeters
-      );
+      // Convert local coordinates (meters) to Mercator coordinates
+      // x = east (meters), y = north (meters), z = altitude (meters)
+      const mercatorX = this.originMercator.x + x * this.scale;
+      const mercatorY = this.originMercator.y + y * this.scale;
+      const mercatorZ = this.originMercator.z + z * this.scale;
 
-      // Update position
-      this.aircraft.position.set(
-        mercatorCoord.x,
-        mercatorCoord.y,
-        mercatorCoord.z
-      );
+      // Update position in Mercator space
+      this.aircraft.position.set(mercatorX, mercatorY, mercatorZ);
 
       // Update heading
-      const headingRad = (newHeadingDeg * Math.PI) / 180;
-      this.aircraft.rotation.set(-Math.PI / 2, Math.PI - headingRad, 0);
+      const headingRad = (headingDeg * Math.PI) / 180;
+      this.aircraft.rotation.set(-Math.PI / 2, headingRad, 0);
 
       // Trigger repaint
       this.map.triggerRepaint();

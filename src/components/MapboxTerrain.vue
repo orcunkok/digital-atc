@@ -13,12 +13,14 @@ const mapContainer = ref(null);
 let map = null;
 let aircraftLayer = null;
 let sim = null;
+let originMercator = null;
+let meterScale = null;
 
-// Aircraft position from KOAK_IFR_vectors_goaround scenario
-const aircraftLat = 37.70;
-const aircraftLon = -122.35;
-const aircraftAltitudeMeters = 1000;
-const aircraftHeadingDeg = 20; // Initial heading from scenario
+// Aircraft origin from KOAK_IFR_vectors_goaround scenario (lat/lon)
+const originLat = 37.70;
+const originLon = -122.35;
+const originAltitudeMeters = 1000;
+const initialHeadingDeg = 20; // Initial heading from scenario
 
 onMounted(() => {
   // Replace with your Mapbox access token
@@ -27,7 +29,7 @@ onMounted(() => {
   map = new mapboxgl.Map({
     container: mapContainer.value,
     style: 'mapbox://styles/mapbox/outdoors-v12',
-    center: [aircraftLon, aircraftLat], // Oakland scenario coordinates
+    center: [originLon, originLat], // Oakland scenario coordinates
     zoom: 13,
     pitch: 70,
     bearing: 0,
@@ -57,34 +59,125 @@ onMounted(() => {
       },
     });
 
-    // Add Three.js custom layer with aircraft GLB model
+    // Convert origin lat/lon to Mercator using Mapbox API
+    originMercator = mapboxgl.MercatorCoordinate.fromLngLat(
+      [originLon, originLat],
+      originAltitudeMeters
+    );
+    meterScale = originMercator.meterInMercatorCoordinateUnits();
+
+    // Create Three.js layer with local coordinates
     aircraftLayer = createAircraftLayer({
-      lat: aircraftLat,
-      lon: aircraftLon,
-      altitudeMeters: aircraftAltitudeMeters,
-      headingDeg: aircraftHeadingDeg,
+      originMercator,
+      scale: meterScale,
+      initialX: 0, // Start at origin (0 meters east)
+      initialY: 0, // Start at origin (0 meters north)
+      initialZ: 0, // Start at origin altitude (0 meters relative)
+      headingDeg: initialHeadingDeg,
     });
     map.addLayer(aircraftLayer);
 
-    // Create and start simulation
+    // Create GeoJSON source for breadcrumb trail
+    map.addSource('aircraft-trail', {
+      type: 'geojson',
+      lineMetrics: true,
+      data: {
+        type: 'Feature',
+        properties: {
+          elevation: [],
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: [],
+        },
+      },
+    });
+
+    // Add elevated line layer for breadcrumb trail
+    map.addLayer({
+      id: 'aircraft-trail-line',
+      type: 'line',
+      source: 'aircraft-trail',
+      layout: {
+        'line-z-offset': [
+          'at-interpolated',
+          [
+            '*',
+            ['line-progress'],
+            ['-', ['length', ['get', 'elevation']], 1],
+          ],
+          ['get', 'elevation'],
+        ],
+        'line-elevation-reference': 'sea',
+      },
+      paint: {
+        'line-emissive-strength': 1.0,
+        'line-width': 6,
+        'line-color': '#00ff00',
+      },
+    });
+
+    // Helper function to convert local coordinates to lat/lon
+    function localToLatLon(localX, localY, localZ) {
+      const mercatorX = originMercator.x + localX * meterScale;
+      const mercatorY = originMercator.y + localY * meterScale;
+      const mercatorZ = originMercator.z + localZ * meterScale;
+      const mercatorCoord = new mapboxgl.MercatorCoordinate(
+        mercatorX,
+        mercatorY,
+        mercatorZ
+      );
+      const lngLat = mercatorCoord.toLngLat();
+      return [lngLat.lng, lngLat.lat];
+    }
+
+    // Create sim that works in local coordinates
     sim = createSim({
-      initialLat: aircraftLat,
-      initialLon: aircraftLon,
-      altitudeMeters: aircraftAltitudeMeters,
-      onUpdate: (state) => {
-        // Update aircraft position when sim state changes
+      initialHeadingDeg,
+      initialAltitudeMeters: 0, // Relative to origin
+      onUpdate: (localState) => {
+        // Update Three.js with local coordinates
         if (aircraftLayer && aircraftLayer.updatePosition) {
           aircraftLayer.updatePosition(
-            state.lat,
-            state.lon,
-            state.altitudeMeters,
-            state.headingDeg
+            localState.x,
+            localState.y,
+            localState.z,
+            localState.headingDeg
           );
+        }
+
+        // Update breadcrumb trail if we have position history
+        if (localState.positionHistory && localState.positionHistory.length > 1) {
+          const coordinates = [];
+          const elevations = [];
+
+          // Convert each point in history from local to lat/lon
+          for (const point of localState.positionHistory) {
+            const [lng, lat] = localToLatLon(point.x, point.y, point.z);
+            coordinates.push([lng, lat]);
+            // Elevation in meters (absolute altitude)
+            elevations.push(originAltitudeMeters + point.z);
+          }
+
+          // Update GeoJSON source
+          const source = map.getSource('aircraft-trail');
+          if (source) {
+            source.setData({
+              type: 'Feature',
+              properties: {
+                elevation: elevations,
+              },
+              geometry: {
+                type: 'LineString',
+                coordinates: coordinates,
+              },
+            });
+          }
         }
       },
     });
 
-    // Start the simulation
+    // Start simulation
     sim.start();
 
     // Add navigation controls
@@ -93,12 +186,9 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  // Stop simulation
   if (sim) {
     sim.stop();
   }
-
-  // Remove map
   if (map) {
     map.remove();
   }

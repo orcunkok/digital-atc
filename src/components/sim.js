@@ -1,30 +1,37 @@
-import mapboxgl from 'mapbox-gl';
-
 /**
  * Simple simulation that moves aircraft north 1000m and back in a loop
+ * All calculations are in local coordinates (meters relative to origin)
  * @param {Object} options - Simulation options
- * @param {number} options.initialLat - Starting latitude
- * @param {number} options.initialLon - Starting longitude
- * @param {number} options.altitudeMeters - Altitude in meters
- * @param {Function} options.onUpdate - Callback function called with updated position {lat, lon, headingDeg}
+ * @param {number} options.initialHeadingDeg - Initial heading in degrees
+ * @param {number} options.initialAltitudeMeters - Initial altitude in meters
+ * @param {Function} options.onUpdate - Callback function called with local state {x, y, z, headingDeg}
  * @returns {Object} Simulation control object with start/stop methods
  */
-export function createSim({ initialLat, initialLon, altitudeMeters, onUpdate }) {
-  const speedMps = 300; // 50 meters per second
-  const distanceM = 1000; // 1000 meters
-  const durationSeconds = distanceM / speedMps; // 20 seconds each direction
+export function createSim({
+  initialHeadingDeg = 0,
+  initialAltitudeMeters = 1000,
+  onUpdate,
+}) {
+  const speedMps = 300; // meters per second
+  const distanceM = 10000; // 1000 meters
 
-  let currentLat = initialLat;
-  let currentLon = initialLon;
+  // Local coordinates (meters): x=east, y=north, z=up
+  let x = 0; // east (meters)
+  let y = 0; // north (meters)
+  let z = initialAltitudeMeters; // altitude (meters)
+  let headingDeg = initialHeadingDeg;
+
   let startTime = null;
   let animationFrameId = null;
   let isRunning = false;
   let direction = 1; // 1 = north, -1 = south
 
-  // Convert meters to degrees (approximate, works well for small distances)
-  // 1 degree latitude ≈ 111,000 meters
-  const metersPerDegreeLat = 111000;
-  const latDeltaPerSecond = speedMps / metersPerDegreeLat;
+  // Track position history for breadcrumb trail (last 1000 meters)
+  const maxTrailDistanceM = 1000; // Keep last 1000 meters
+  let positionHistory = []; // Array of {x, y, z, cumulativeDistance}
+  let lastUpdateTime = null;
+  const updateIntervalMs = 100; // Update every 100ms (10 times per second)
+  let cumulativeDistance = 0; // Total distance traveled along path
 
   function updatePosition(timestamp) {
     if (!isRunning) return;
@@ -35,37 +42,75 @@ export function createSim({ initialLat, initialLon, altitudeMeters, onUpdate }) 
 
     const elapsed = (timestamp - startTime) / 1000; // Convert to seconds
 
-    // Move north or south
+    // Move north or south in local coordinates
     if (direction === 1) {
-      // Moving north
-      currentLat = initialLat + latDeltaPerSecond * elapsed;
-      if (currentLat >= initialLat + distanceM / metersPerDegreeLat) {
+      // Moving north (positive y)
+      y = speedMps * elapsed;
+      if (y >= distanceM) {
         // Reached north end, switch to south
         direction = -1;
         startTime = timestamp; // Reset timer for southbound leg
-        currentLat = initialLat + distanceM / metersPerDegreeLat;
+        y = distanceM;
       }
     } else {
-      // Moving south
-      const distanceTraveled = latDeltaPerSecond * elapsed;
-      currentLat = initialLat + distanceM / metersPerDegreeLat - distanceTraveled;
-      if (currentLat <= initialLat) {
+      // Moving south (negative y)
+      const distanceTraveled = speedMps * elapsed;
+      y = distanceM - distanceTraveled;
+      if (y <= 0) {
         // Reached south end, switch to north and loop
         direction = 1;
         startTime = timestamp; // Reset timer for northbound leg
-        currentLat = initialLat;
+        y = 0;
       }
     }
 
     // Calculate heading (0 = north, 180 = south)
-    const headingDeg = direction === 1 ? 0 : 180;
+    headingDeg = direction === 1 ? 0 : 180;
 
-    // Call update callback
+    // Update position history every second
+    const currentTime = timestamp;
+    if (!lastUpdateTime || currentTime - lastUpdateTime >= updateIntervalMs) {
+      // Calculate distance from last position
+      if (positionHistory.length > 0) {
+        const lastPoint = positionHistory[positionHistory.length - 1];
+        const dx = x - lastPoint.x;
+        const dy = y - lastPoint.y;
+        const segmentDistance = Math.sqrt(dx * dx + dy * dy);
+        cumulativeDistance += segmentDistance;
+      }
+
+      // Add current position to history
+      positionHistory.push({
+        x,
+        y,
+        z,
+        cumulativeDistance,
+        timestamp: currentTime,
+      });
+
+      // Remove points beyond maxTrailDistanceM (based on path distance)
+      if (positionHistory.length > 1) {
+        const newestDistance = positionHistory[positionHistory.length - 1].cumulativeDistance;
+        
+        // Remove points that are beyond the max trail distance
+        while (positionHistory.length > 1) {
+          const oldestDistance = positionHistory[0].cumulativeDistance;
+          const trailLength = newestDistance - oldestDistance;
+          if (trailLength <= maxTrailDistanceM) break;
+          positionHistory.shift();
+        }
+      }
+
+      lastUpdateTime = currentTime;
+    }
+
+    // Call update callback with local coordinates and history
     onUpdate({
-      lat: currentLat,
-      lon: currentLon,
-      altitudeMeters,
+      x,
+      y,
+      z,
       headingDeg,
+      positionHistory: [...positionHistory], // Send copy of history
     });
 
     animationFrameId = requestAnimationFrame(updatePosition);
@@ -76,6 +121,16 @@ export function createSim({ initialLat, initialLon, altitudeMeters, onUpdate }) 
       if (isRunning) return;
       isRunning = true;
       startTime = null;
+      // Add initial position to history
+      if (positionHistory.length === 0) {
+        positionHistory.push({
+          x,
+          y,
+          z,
+          cumulativeDistance: 0,
+          timestamp: performance.now(),
+        });
+      }
       animationFrameId = requestAnimationFrame(updatePosition);
     },
 
@@ -90,16 +145,21 @@ export function createSim({ initialLat, initialLon, altitudeMeters, onUpdate }) 
 
     reset() {
       this.stop();
-      currentLat = initialLat;
-      currentLon = initialLon;
+      x = 0;
+      y = 0;
+      z = initialAltitudeMeters;
+      headingDeg = initialHeadingDeg;
       direction = 1;
+      positionHistory = [];
+      lastUpdateTime = null;
+      cumulativeDistance = 0;
     },
 
     getState() {
       return {
-        lat: currentLat,
-        lon: currentLon,
-        altitudeMeters,
+        x,
+        y,
+        z,
         headingDeg: direction === 1 ? 0 : 180,
       };
     },
