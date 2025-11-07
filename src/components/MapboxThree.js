@@ -184,8 +184,9 @@ export function createAircraftLayer({
      * @param {number} z - Altitude in meters
      * @param {number} headingDeg - Heading in degrees
      * @param {number} bankAngleDeg - Bank angle in degrees (positive = right wing down)
+     * @param {number} pitchAngleDeg - Pitch angle in degrees (positive = nose up)
      */
-    updatePosition: function (x, y, z, headingDeg, bankAngleDeg = 0) {
+    updatePosition: function (x, y, z, headingDeg, bankAngleDeg = 0, pitchAngleDeg = 0) {
       if (!this.aircraftGroup) {
         return; // Aircraft not loaded yet
       }
@@ -199,14 +200,15 @@ export function createAircraftLayer({
       // Update position in Mercator space (position the group, not the aircraft)
       this.aircraftGroup.position.set(mercatorX, mercatorY, mercatorZ);
 
-      // Update heading and bank angle
+      // Update heading, pitch, and bank angle
       // Rotation order: pitch (X), yaw (Y), roll (Z)
-      // Pitch: -90° to make aircraft horizontal
+      // Pitch: -90° to make aircraft horizontal, plus pitch angle (positive = nose up)
       // Yaw: heading rotation
       // Roll: bank angle (positive = right wing down)
       const headingRad = (headingDeg * Math.PI) / 180;
       const bankAngleRad = (bankAngleDeg * Math.PI) / 180;
-      this.aircraftGroup.rotation.set(-Math.PI / 2, headingRad, bankAngleRad);
+      const pitchAngleRad = (pitchAngleDeg * Math.PI) / 180;
+      this.aircraftGroup.rotation.set(-Math.PI / 2 + pitchAngleRad, headingRad, bankAngleRad);
 
       // Trigger repaint
       this.map.triggerRepaint();

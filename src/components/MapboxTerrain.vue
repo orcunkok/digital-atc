@@ -223,7 +223,8 @@ onMounted(() => {
             localState.y,
             localState.z,
             localState.headingDeg,
-            localState.bankAngleDeg || 0
+            localState.bankAngleDeg || 0,
+            localState.pitchAngleDeg || 0
           );
         }
 
@@ -372,8 +373,8 @@ onMounted(() => {
     const pressedKeys = new Set();
 
     function handleKeyDown(event) {
-      // Prevent default behavior and stop propagation for arrow keys
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+      // Prevent default behavior and stop propagation for arrow keys, A/D, and W/S
+      if (['ArrowUp', 'ArrowDown', 'a', 'A', 'd', 'D', 'w', 'W', 's', 'S'].includes(event.key)) {
         event.preventDefault();
         event.stopPropagation();
       }
@@ -382,8 +383,8 @@ onMounted(() => {
     }
 
     function handleKeyUp(event) {
-      // Stop propagation for arrow keys
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+      // Stop propagation for arrow keys, A/D, and W/S
+      if (['ArrowUp', 'ArrowDown', 'a', 'A', 'd', 'D', 'w', 'W', 's', 'S'].includes(event.key)) {
         event.preventDefault();
         event.stopPropagation();
       }
@@ -399,12 +400,17 @@ onMounted(() => {
       if (pressedKeys.has('ArrowUp')) speedInput = 1;
       if (pressedKeys.has('ArrowDown')) speedInput = -1;
 
-      // Turn control: ArrowLeft = turn left, ArrowRight = turn right
+      // Turn control: A = turn left, D = turn right
       let turnInput = 0;
-      if (pressedKeys.has('ArrowLeft')) turnInput = 1;
-      if (pressedKeys.has('ArrowRight')) turnInput = -1;
+      if (pressedKeys.has('a') || pressedKeys.has('A')) turnInput = 1;
+      if (pressedKeys.has('d') || pressedKeys.has('D')) turnInput = -1;
 
-      sim.setControls({ speed: speedInput, turn: turnInput });
+      // Pitch control: W = pitch down (descend), S = pitch up (climb)
+      let pitchInput = 0;
+      if (pressedKeys.has('w') || pressedKeys.has('W')) pitchInput = -1;
+      if (pressedKeys.has('s') || pressedKeys.has('S')) pitchInput = 1;
+
+      sim.setControls({ speed: speedInput, turn: turnInput, pitch: pitchInput });
     }
 
     // Add keyboard event listeners
