@@ -34,6 +34,7 @@ onMounted(() => {
     pitch: 70,
     bearing: 0,
     antialias: true,
+    keyboard: false, // Disable Mapbox keyboard controls
   });
 
   map.on('load', () => {
@@ -142,7 +143,8 @@ onMounted(() => {
             localState.x,
             localState.y,
             localState.z,
-            localState.headingDeg
+            localState.headingDeg,
+            localState.bankAngleDeg || 0
           );
         }
 
@@ -154,10 +156,10 @@ onMounted(() => {
           // Convert each point in history from local to lat/lon
           // Trail uses same coordinates as aircraft (aircraft offset handled in Three.js)
           for (const point of localState.positionHistory) {
-            const [lng, lat] = localToLatLon(point.x, point.y-200, point.z);
+            const [lng, lat] = localToLatLon(point.x, point.y, point.z);
             coordinates.push([lng, lat]);
             // Elevation in meters (absolute altitude)
-            elevations.push(originAltitudeMeters+20);
+            elevations.push(originAltitudeMeters + point.z);
           }
 
           // Update GeoJSON source
@@ -189,10 +191,65 @@ onMounted(() => {
         showZoom: true,
       })
     );
+
+    // Keyboard controls for aircraft
+    const pressedKeys = new Set();
+
+    function handleKeyDown(event) {
+      // Prevent default behavior and stop propagation for arrow keys
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      pressedKeys.add(event.key);
+      updateControls();
+    }
+
+    function handleKeyUp(event) {
+      // Stop propagation for arrow keys
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      pressedKeys.delete(event.key);
+      updateControls();
+    }
+
+    function updateControls() {
+      if (!sim) return;
+
+      // Speed control: ArrowUp = speed up, ArrowDown = slow down
+      let speedInput = 0;
+      if (pressedKeys.has('ArrowUp')) speedInput = 1;
+      if (pressedKeys.has('ArrowDown')) speedInput = -1;
+
+      // Turn control: ArrowLeft = turn left, ArrowRight = turn right
+      let turnInput = 0;
+      if (pressedKeys.has('ArrowLeft')) turnInput = 1;
+      if (pressedKeys.has('ArrowRight')) turnInput = -1;
+
+      sim.setControls({ speed: speedInput, turn: turnInput });
+    }
+
+    // Add keyboard event listeners
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    // Store cleanup function
+    window._cleanupKeyboardControls = () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
   });
 });
 
 onUnmounted(() => {
+  // Clean up keyboard controls
+  if (window._cleanupKeyboardControls) {
+    window._cleanupKeyboardControls();
+    delete window._cleanupKeyboardControls;
+  }
+
   if (sim) {
     sim.stop();
   }
