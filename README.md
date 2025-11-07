@@ -1,49 +1,75 @@
-# Digital ATC (MVP)
+# Digital ATC
 
-LLM-driven “digital pilot” that parses ATC instructions, reads back with FAA phraseology and ICAO/NATO phonetics, and outputs structured intent to fly a simple point‑mass fixed‑wing sim over SF on Mapbox.
+A flight simulation interface with an LLM-powered digital pilot that parses ATC instructions and controls a point-mass aircraft over the San Francisco Bay Area using Mapbox terrain.
 
-What’s here
-- /schemas: JSON Schemas for LLM outputs and inputs
-- /prompts: System + developer prompts, and few-shot examples
-- /lexicon: ICAO/NATO phonetic alphabet and FAA number words (for readbacks)
-- /scenarios: Scripted ATC lines and GeoJSON layers for demo runs
-- /docs: FAA/AIM references used to guide phraseology rules (links only)
+![Application Screenshot](docs/readme.png)
 
-How it works (high level)
-- Frontend (Vite + Vue + Mapbox) runs a simple JS sim (point-mass).
-- ATC text is clicked/typed into the console and sent to the LLM.
-- LLM returns JSON:
-  - readback: brief, standard phraseology with callsign + phonetics
-  - intent: heading/altitude/speed/specialAction/navigation
-  - safetyFlags: needsClarification/conflictPredicted/etc.
-- Resolver applies intent to sim with rate limits; constraints check flags conflicts.
+## What is this?
 
-NATO Phonetics and FAA numbers
-- Readbacks must:
-  - Use ICAO/NATO alphabet for letters (e.g., N123AB -> “November One Two Three Alfa Bravo”)
-  - Use FAA/ICAO numbers: 0 Zero, 1 Wun, 2 Too, 3 Tree, 4 Fower, 5 Fife, 6 Six, 7 Seven, 8 Eight, 9 Niner
-  - Altitudes spoken in plain words (e.g., 1,500 -> “one thousand five hundred”)
-- The LLM prompt enforces this, and a post-return validator checks it.
+A real-time flight simulator that:
+- Renders a 3D aircraft over Mapbox terrain with simplified physics
+- Accepts ATC instructions via LLM integration
+- Generates proper readbacks with ICAO/NATO phonetics
+- Displays flight path, heading, speed, and altitude in real-time
+- Supports manual controls and automated target following
 
-Quick start
-- Put your Mapbox token in your frontend.
-- Use /prompts/system_pilot.txt and /prompts/developer_pilot.txt with the /schemas/response.schema.json.
-- Run your sim; send {atcText, state, constraints, traffic} to your LLM endpoint; apply returned intent.
+## Quick Start
 
-References
+```bash
+npm i && npm run dev
+```
 
-- FAA AIM Chapter 4-2: Radio Communications Phraseology and Techniques
-  https://www.faa.gov/air_traffic/publications/atpubs/aim_html/chap4_section_2.html
+Set your Mapbox token in `.env`:
+```
+VITE_MAPBOX_TOKEN=your_token_here
+```
 
-- FAA Pilot/Controller Glossary (latest)
-  https://www.faa.gov/air_traffic/publications/media/PCG_Chg_2_dtd_3-21-24.pdf
+## Current Status
 
-- FAA Order JO 7110.65 (controller phraseology and procedures)
-  Latest consolidated version:
-  https://www.faa.gov/documentLibrary/media/Order/7110.65BB_Basic_dtd_2-20-25.pdf
+**What's Working:**
+- ✅ Point-mass flight simulation with realistic turn rates and climb/descent
+- ✅ 3D aircraft rendering with Three.js over Mapbox terrain
+- ✅ Real-time position tracking with trail
+- ✅ Manual controls (keyboard) and automated target setting
 
-- ICAO Radiotelephony Alphabet
-  https://www.icao.int/pages/alphabetradiotelephony.aspx
+**What's Next:**
+- 🔄 LLM integration for ATC instruction parsing
+- 🔄 Automated readback generation with phonetics
+- 🔄 Conflict detection and safety flagging
+- 🔄 Scenario playback system
+- 🔄 ATC console interface
 
-License
-- MIT 
+## Project Structure
+
+```
+/schemas          JSON schemas for LLM I/O
+/prompts          System and developer prompts for LLM
+/lexicon          ICAO/NATO phonetics and FAA number words
+/scenarios        Demo scenarios with ATC scripts
+/src/components   Vue components (MapboxTerrain, sim, MapboxThree)
+```
+
+## Controls
+
+- **Arrow Up/Down**: Speed control
+- **A/D**: Turn left/right
+- **W/S**: Pitch down/up (descend/climb)
+- **Input Fields**: Set heading, altitude, or speed targets
+- **Set Button**: Apply all input values
+
+## Tech Stack
+
+- Vue 3 + Vite
+- Mapbox GL JS
+- Three.js
+- Point-mass physics simulation
+
+## References
+
+- [FAA AIM Chapter 4-2: Radio Communications](https://www.faa.gov/air_traffic/publications/atpubs/aim_html/chap4_section_2.html)
+- [FAA Pilot/Controller Glossary](https://www.faa.gov/air_traffic/publications/media/PCG_Chg_2_dtd_3-21-24.pdf)
+- [ICAO Radiotelephony Alphabet](https://www.icao.int/pages/alphabetradiotelephony.aspx)
+
+## License
+
+MIT
