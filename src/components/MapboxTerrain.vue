@@ -113,7 +113,7 @@ onMounted(() => {
       paint: {
         'line-emissive-strength': 1.0,
         'line-width': 6,
-        'line-color': '#00ff00',
+        'line-color': '#40e0d0', // Turquoise
       },
     });
 
@@ -152,8 +152,9 @@ onMounted(() => {
           const elevations = [];
 
           // Convert each point in history from local to lat/lon
+          // Trail uses same coordinates as aircraft (aircraft offset handled in Three.js)
           for (const point of localState.positionHistory) {
-            const [lng, lat] = localToLatLon(point.x+55, point.y-220, point.z); //some custom offsets for trail line to be centered on the aircraft
+            const [lng, lat] = localToLatLon(point.x, point.y-200, point.z);
             coordinates.push([lng, lat]);
             // Elevation in meters (absolute altitude)
             elevations.push(originAltitudeMeters+20);

@@ -64,13 +64,33 @@ export function createAircraftLayer({
         (gltf) => {
           this.aircraft = gltf.scene;
 
-          // Set initial position using local coordinates
-          this.updatePosition(initialX, initialY, initialZ, headingDeg);
+          // Model origin is at right engine, offset to center the model
+          // Create parent group to hold offset (in model-local space, rotates with aircraft)
+          // x = right (east), y = forward (north), z = up
+          // Right engine is to the right of center, so offset left (negative x)
+          const modelOriginOffsetX = -50; // Offset left to center (meters, adjust as needed)
+          const modelOriginOffsetY = 0; // No fore/aft offset if model is centered
+          const modelOriginOffsetZ = 0; // No vertical offset
+          
+          // Create parent group for offset
+          this.aircraftGroup = new THREE.Group();
+          this.aircraftGroup.add(this.aircraft);
+          
+          // Apply offset in model-local space (will rotate with aircraft heading)
+          this.aircraft.position.set(
+            modelOriginOffsetX * this.scale,
+            modelOriginOffsetY * this.scale,
+            modelOriginOffsetZ * this.scale
+          );
 
           // Get scale factor for proper sizing
           this.aircraft.scale.set(this.scale, -this.scale, this.scale);
 
-          this.scene.add(this.aircraft);
+          // Add group to scene (position and rotate the group, not the aircraft)
+          this.scene.add(this.aircraftGroup);
+
+          // Set initial position using local coordinates
+          this.updatePosition(initialX, initialY, initialZ, headingDeg);
           map.triggerRepaint();
         },
         (progress) => {
@@ -84,7 +104,7 @@ export function createAircraftLayer({
     },
 
     render: function (gl, matrix) {
-      if (!this.aircraft) {
+      if (!this.aircraftGroup) {
         return; // Don't render until model is loaded
       }
 
@@ -106,7 +126,7 @@ export function createAircraftLayer({
      * @param {number} headingDeg - Heading in degrees
      */
     updatePosition: function (x, y, z, headingDeg) {
-      if (!this.aircraft) {
+      if (!this.aircraftGroup) {
         return; // Aircraft not loaded yet
       }
 
@@ -116,12 +136,12 @@ export function createAircraftLayer({
       const mercatorY = this.originMercator.y + y * this.scale;
       const mercatorZ = this.originMercator.z + z * this.scale;
 
-      // Update position in Mercator space
-      this.aircraft.position.set(mercatorX, mercatorY, mercatorZ);
+      // Update position in Mercator space (position the group, not the aircraft)
+      this.aircraftGroup.position.set(mercatorX, mercatorY, mercatorZ);
 
-      // Update heading
+      // Update heading (rotate the group, not the aircraft)
       const headingRad = (headingDeg * Math.PI) / 180;
-      this.aircraft.rotation.set(-Math.PI / 2, headingRad, 0);
+      this.aircraftGroup.rotation.set(-Math.PI / 2, headingRad, 0);
 
       // Trigger repaint
       this.map.triggerRepaint();

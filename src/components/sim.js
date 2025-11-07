@@ -27,10 +27,10 @@ export function createSim({
   let direction = 1; // 1 = north, -1 = south
 
   // Track position history for breadcrumb trail (last 1000 meters)
-  const maxTrailDistanceM = 1000; // Keep last 1000 meters
+  const maxTrailDistanceM = 5000; // Keep last 5000 meters
   let positionHistory = []; // Array of {x, y, z, cumulativeDistance}
   let lastUpdateTime = null;
-  const updateIntervalMs = 100; // Update every 100ms (10 times per second)
+  const updateIntervalMs = 5; // Update every 5ms (200 times per second)
   let cumulativeDistance = 0; // Total distance traveled along path
 
   function updatePosition(timestamp) {
