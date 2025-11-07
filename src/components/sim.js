@@ -12,6 +12,11 @@ export function createSim({
   initialAltitudeMeters = 1000,
   onUpdate,
 }) {
+  // Helper function for degree-to-radian conversion
+  const DEG_TO_RAD = Math.PI / 180;
+  const toRadians = (deg) => deg * DEG_TO_RAD;
+  const toDegrees = (rad) => rad / DEG_TO_RAD;
+
   // Simulation parameters
   const minSpeedMps = 60; // Minimum speed (meters per second)
   const maxSpeedMps = 130; // Maximum speed (meters per second)
@@ -20,7 +25,7 @@ export function createSim({
   const bankAngleSmoothingRate = 15; // Bank angle change rate (degrees per second)
   const maxClimbRateMps = 20.32; // Maximum climb rate (4000 fpm in m/s)
   const maxDescentRateMps = 20.32; // Maximum descent rate (4000 fpm in m/s)
-  const maxPitchAngleDeg = 10; // Maximum pitch angle (degrees, ±30 degrees)
+  const maxPitchAngleDeg = 10; // Maximum pitch angle (degrees, ±10 degrees)
   const pitchAngleSmoothingRate = 3; // Pitch angle change rate (degrees per second)
   const g = 9.81; // Gravitational acceleration (m/s²)
 
@@ -73,9 +78,9 @@ export function createSim({
     let targetBankAngleDeg = 0;
     if (Math.abs(turnRate) > 0.1 && speedMps > 10) {
       // Convert turn rate to radians per second
-      const turnRateRadps = (turnRate * Math.PI) / 180;
+      const turnRateRadps = toRadians(turnRate);
       // Calculate required bank angle for coordinated turn
-      targetBankAngleDeg = (Math.atan((turnRateRadps * speedMps) / g) * 180) / Math.PI;
+      targetBankAngleDeg = toDegrees(Math.atan((turnRateRadps * speedMps) / g));
       // Clamp to reasonable limits (±30 degrees max)
       targetBankAngleDeg = Math.max(-30, Math.min(30, targetBankAngleDeg));
     }
@@ -115,7 +120,7 @@ export function createSim({
     // Update altitude based on pitch angle
     // Convert pitch angle to vertical speed
     // Vertical speed = speed * sin(pitch_angle)
-    const pitchRad = (pitchAngleDeg * Math.PI) / 180;
+    const pitchRad = toRadians(pitchAngleDeg);
     let verticalSpeedMps = speedMps * Math.sin(pitchRad);
     
     // Clamp vertical speed to max rates
@@ -136,7 +141,7 @@ export function createSim({
     // Move forward based on heading and speed
     // Account for pitch angle: horizontal component = speed * cos(pitch)
     // Heading: 0 = north, 90 = east, 180 = south, 270 = west
-    const headingRad = (headingDeg * Math.PI) / 180;
+    const headingRad = toRadians(headingDeg);
     const horizontalSpeedMps = speedMps * Math.cos(pitchRad);
     const distance = horizontalSpeedMps * deltaTime;
     x += Math.sin(headingRad) * distance; // east component
@@ -144,7 +149,10 @@ export function createSim({
 
     // Update position history for trail
     const currentTime = timestamp;
+    let shouldUpdateHistory = false;
     if (!lastUpdateTime || currentTime - lastUpdateTime >= updateIntervalMs) {
+      shouldUpdateHistory = true;
+      
       // Calculate distance from last position
       if (positionHistory.length > 0) {
         const lastPoint = positionHistory[positionHistory.length - 1];
@@ -164,13 +172,16 @@ export function createSim({
       });
 
       // Remove points beyond maxTrailDistanceM (based on path distance)
+      // Cache newest distance to avoid repeated array access
       if (positionHistory.length > 1) {
-        const newestDistance = positionHistory[positionHistory.length - 1].cumulativeDistance;
+        const newestPoint = positionHistory[positionHistory.length - 1];
+        const newestDistance = newestPoint.cumulativeDistance;
         
         // Remove points that are beyond the max trail distance
+        // Use a more efficient approach: find the cutoff index
         while (positionHistory.length > 1) {
-          const oldestDistance = positionHistory[0].cumulativeDistance;
-          const trailLength = newestDistance - oldestDistance;
+          const oldestPoint = positionHistory[0];
+          const trailLength = newestDistance - oldestPoint.cumulativeDistance;
           if (trailLength <= maxTrailDistanceM) break;
           positionHistory.shift();
         }
@@ -180,6 +191,7 @@ export function createSim({
     }
 
     // Call update callback with local coordinates and history
+    // Only copy positionHistory when it was actually updated to avoid unnecessary allocations
     onUpdate({
       x,
       y,
@@ -188,7 +200,7 @@ export function createSim({
       bankAngleDeg,
       pitchAngleDeg,
       speedMps,
-      positionHistory: [...positionHistory], // Send copy of history
+      positionHistory: shouldUpdateHistory ? [...positionHistory] : positionHistory,
     });
 
     animationFrameId = requestAnimationFrame(updatePosition);

@@ -211,25 +211,27 @@ onMounted(() => {
       return [lngLat.lng, lngLat.lat];
     }
 
+    // Helper function for degree-to-radian conversion
+    const DEG_TO_RAD = Math.PI / 180;
+    const toRadians = (deg) => deg * DEG_TO_RAD;
+
     // Create sim that works in local coordinates
     sim = createSim({
       initialHeadingDeg,
       initialAltitudeMeters: 0, // Relative to origin
       onUpdate: (localState) => {
         // Update Three.js with local coordinates
-        if (aircraftLayer && aircraftLayer.updatePosition) {
-          aircraftLayer.updatePosition(
-            localState.x,
-            localState.y,
-            localState.z,
-            localState.headingDeg,
-            localState.bankAngleDeg || 0,
-            localState.pitchAngleDeg || 0
-          );
-        }
+        aircraftLayer?.updatePosition?.(
+          localState.x,
+          localState.y,
+          localState.z,
+          localState.headingDeg,
+          localState.bankAngleDeg || 0,
+          localState.pitchAngleDeg || 0
+        );
 
         // Update breadcrumb trail if we have position history
-        if (localState.positionHistory && localState.positionHistory.length > 1) {
+        if (localState.positionHistory?.length > 1) {
           const coordinates = [];
           const elevations = [];
 
@@ -245,18 +247,16 @@ onMounted(() => {
 
           // Update GeoJSON source
           const source = map.getSource('aircraft-trail');
-          if (source) {
-            source.setData({
-              type: 'Feature',
-              properties: {
-                elevation: elevations,
-              },
-              geometry: {
-                type: 'LineString',
-                coordinates: coordinates,
-              },
-            });
-          }
+          source?.setData({
+            type: 'Feature',
+            properties: {
+              elevation: elevations,
+            },
+            geometry: {
+              type: 'LineString',
+              coordinates: coordinates,
+            },
+          });
         }
 
         // Update aircraft label with heading, speed, and altitude
@@ -266,41 +266,43 @@ onMounted(() => {
         const altitudeFt = Math.round((originAltitudeMeters + localState.z) * 3.28084);
         const headingDeg = Math.round(localState.headingDeg);
 
-        // Position label above aircraft (offset upward by ~50 meters)
-        // Offset to northeast by 100 meters in each direction
-        const labelAltitude = localState.z + 50;
+        // Position label above aircraft (offset upward by 50 meters)
+        // Offset to northeast: 400 meters east, 200 meters north
+        const LABEL_ALTITUDE_OFFSET = 50; // meters above aircraft
+        const LABEL_X_OFFSET = 400; // meters east
+        const LABEL_Y_OFFSET = 200; // meters north
+        const labelAltitude = localState.z + LABEL_ALTITUDE_OFFSET;
         const absoluteLabelAltitude = originAltitudeMeters + labelAltitude;
-        const labelX = localState.x + 400; // 100 meters east
-        const labelY = localState.y - 200; // 100 meters north
-        const [labelLng, labelLat] = localToLatLon(
-          labelX,
-          labelY,
-          0
-        );
+        const labelX = localState.x + LABEL_X_OFFSET;
+        const labelY = localState.y - LABEL_Y_OFFSET;
+        const [labelLng, labelLat] = localToLatLon(labelX, labelY, 0);
 
         const labelSource = map.getSource('aircraft-label');
-        if (labelSource) {
-          labelSource.setData({
-            type: 'Feature',
-            properties: {
-              heading: headingDeg,
-              speed: speedKt,
-              altitude: altitudeFt,
-              elevation: absoluteLabelAltitude,
-            },
-            geometry: {
-              type: 'Point',
-              coordinates: [labelLng, labelLat],
-            },
-          });
-        }
+        labelSource?.setData({
+          type: 'Feature',
+          properties: {
+            heading: headingDeg,
+            speed: speedKt,
+            altitude: altitudeFt,
+            elevation: absoluteLabelAltitude,
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: [labelLng, labelLat],
+          },
+        });
 
         // Update aircraft shadow triangle
         // Triangle points forward (in heading direction) with shape like aircraft silhouette
-        // Triangle dimensions: ~30m long, ~20m wide at base
-        const triangleLength = 300; // meters (forward direction)
-        const triangleWidth = 200; // meters (perpendicular to heading)
-        const headingRad = (localState.headingDeg * Math.PI) / 180;
+        // Triangle dimensions: 300m long, 200m wide at base
+        const TRIANGLE_LENGTH = 300; // meters (forward direction)
+        const TRIANGLE_WIDTH = 200; // meters (perpendicular to heading)
+        const TRIANGLE_BACK_RATIO = 0.3; // ratio of length for back points
+        const headingRad = toRadians(localState.headingDeg);
+
+        // Cache sin/cos calculations for efficiency
+        const sinH = Math.sin(headingRad);
+        const cosH = Math.cos(headingRad);
 
         // Calculate triangle vertices in local coordinates
         // Center point (aircraft position projected to ground)
@@ -308,37 +310,37 @@ onMounted(() => {
         const centerY = localState.y;
 
         // Forward point (nose of triangle)
-        const noseX = centerX + Math.sin(headingRad) * triangleLength;
-        const noseY = centerY + Math.cos(headingRad) * triangleLength;
+        const noseX = centerX + sinH * TRIANGLE_LENGTH;
+        const noseY = centerY + cosH * TRIANGLE_LENGTH;
 
         // Left wing point (perpendicular to heading, left side)
-        const leftX = centerX - Math.sin(headingRad) * (triangleLength * 0.3) - Math.cos(headingRad) * (triangleWidth / 2);
-        const leftY = centerY - Math.cos(headingRad) * (triangleLength * 0.3) + Math.sin(headingRad) * (triangleWidth / 2);
+        const backLength = TRIANGLE_LENGTH * TRIANGLE_BACK_RATIO;
+        const halfWidth = TRIANGLE_WIDTH / 2;
+        const leftX = centerX - sinH * backLength - cosH * halfWidth;
+        const leftY = centerY - cosH * backLength + sinH * halfWidth;
 
         // Right wing point (perpendicular to heading, right side)
-        const rightX = centerX - Math.sin(headingRad) * (triangleLength * 0.3) + Math.cos(headingRad) * (triangleWidth / 2);
-        const rightY = centerY - Math.cos(headingRad) * (triangleLength * 0.3) - Math.sin(headingRad) * (triangleWidth / 2);
+        const rightX = centerX - sinH * backLength + cosH * halfWidth;
+        const rightY = centerY - cosH * backLength - sinH * halfWidth;
 
         // Convert triangle vertices to lat/lon (slightly above ground level, z = 0.1m to render above trail)
-        const shadowElevation = 0.1; // Small offset to ensure shadow renders above trail
-        const [noseLng, noseLat] = localToLatLon(noseX, noseY, shadowElevation);
-        const [leftLng, leftLat] = localToLatLon(leftX, leftY, shadowElevation);
-        const [rightLng, rightLat] = localToLatLon(rightX, rightY, shadowElevation);
+        const SHADOW_ELEVATION = 0.1; // Small offset to ensure shadow renders above trail
+        const [noseLng, noseLat] = localToLatLon(noseX, noseY, SHADOW_ELEVATION);
+        const [leftLng, leftLat] = localToLatLon(leftX, leftY, SHADOW_ELEVATION);
+        const [rightLng, rightLat] = localToLatLon(rightX, rightY, SHADOW_ELEVATION);
 
         const shadowSource = map.getSource('aircraft-shadow');
-        if (shadowSource) {
-          shadowSource.setData({
-            type: 'Feature',
-            properties: {
-              heading: headingDeg,
-              elevation: originAltitudeMeters + shadowElevation,
-            },
-            geometry: {
-              type: 'Polygon',
-              coordinates: [[[noseLng, noseLat], [leftLng, leftLat], [rightLng, rightLat], [noseLng, noseLat]]],
-            },
-          });
-        }
+        shadowSource?.setData({
+          type: 'Feature',
+          properties: {
+            heading: headingDeg,
+            elevation: originAltitudeMeters + SHADOW_ELEVATION,
+          },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[noseLng, noseLat], [leftLng, leftLat], [rightLng, rightLat], [noseLng, noseLat]]],
+          },
+        });
       },
     });
 

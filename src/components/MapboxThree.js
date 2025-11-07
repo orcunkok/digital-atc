@@ -24,6 +24,10 @@ export function createAircraftLayer({
   headingDeg = 0,
   modelPath = '/Airplane.glb',
 }) {
+  // Helper function for degree-to-radian conversion
+  const DEG_TO_RAD = Math.PI / 180;
+  const toRadians = (deg) => deg * DEG_TO_RAD;
+
   const layer = {
     id: 'aircraft-3d-layer',
     type: 'custom',
@@ -168,9 +172,7 @@ export function createAircraftLayer({
       }
 
       // Update camera projection matrix from Mapbox
-      this.camera.projectionMatrix = new THREE.Matrix4()
-        .fromArray(matrix)
-        .multiply(new THREE.Matrix4().makeTranslation(0, 0, 0));
+      this.camera.projectionMatrix = new THREE.Matrix4().fromArray(matrix);
 
       this.renderer.resetState();
       this.renderer.render(this.scene, this.camera);
@@ -205,9 +207,9 @@ export function createAircraftLayer({
       // Pitch: -90° to make aircraft horizontal, plus pitch angle (positive = nose up)
       // Yaw: heading rotation
       // Roll: bank angle (positive = right wing down)
-      const headingRad = (headingDeg * Math.PI) / 180;
-      const bankAngleRad = (bankAngleDeg * Math.PI) / 180;
-      const pitchAngleRad = (pitchAngleDeg * Math.PI) / 180;
+      const headingRad = toRadians(headingDeg);
+      const bankAngleRad = toRadians(bankAngleDeg);
+      const pitchAngleRad = toRadians(pitchAngleDeg);
       this.aircraftGroup.rotation.set(-Math.PI / 2 + pitchAngleRad, headingRad, bankAngleRad);
 
       // Trigger repaint
