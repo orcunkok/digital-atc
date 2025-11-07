@@ -13,10 +13,9 @@
           min="0"
           max="360"
           placeholder="000"
-          @keyup.enter="setHeading"
+          @keyup.enter="setAll"
           class="control-input"
         />
-        <button @click="setHeading" class="control-btn">Set</button>
       </div>
       <div class="control-group">
         <label for="altitude-input">Altitude</label>
@@ -27,10 +26,9 @@
           min="-1000"
           max="60000"
           placeholder="10000"
-          @keyup.enter="setAltitude"
+          @keyup.enter="setAll"
           class="control-input"
         />
-        <button @click="setAltitude" class="control-btn">Set</button>
       </div>
       <div class="control-group">
         <label for="speed-input">Speed</label>
@@ -41,11 +39,11 @@
           min="40"
           max="400"
           placeholder="120"
-          @keyup.enter="setSpeed"
+          @keyup.enter="setAll"
           class="control-input"
         />
-        <button @click="setSpeed" class="control-btn">Set</button>
       </div>
+      <button @click="setAll" class="set-all-btn">Set</button>
     </div>
   </div>
 </template>
@@ -69,6 +67,7 @@ let sim = null;
 let originMercator = null;
 let meterScale = null;
 let isTopDownView = false;
+let cleanupMapEvents = null;
 
 // Aircraft origin from KOAK_IFR_vectors_goaround scenario (lat/lon)
 const originLat = 37.70;
@@ -268,13 +267,39 @@ onMounted(() => {
     const DEG_TO_RAD = Math.PI / 180;
     const toRadians = (deg) => deg * DEG_TO_RAD;
 
+    // Performance optimization: throttle updates for expensive operations
+    let lastTrailUpdate = 0;
+    let lastLabelUpdate = 0;
+    let lastShadowUpdate = 0;
+    const TRAIL_UPDATE_INTERVAL = 100; // Update trail every 100ms
+    const LABEL_UPDATE_INTERVAL = 200; // Update label every 200ms
+    const SHADOW_UPDATE_INTERVAL = 100; // Update shadow every 100ms
+
+    // Cache sources to avoid repeated lookups
+    let trailSource = null;
+    let labelSource = null;
+    let shadowSource = null;
+
+    // Constants for label and shadow calculations
+    const LABEL_ALTITUDE_OFFSET = 50;
+    const LABEL_X_OFFSET = 400;
+    const LABEL_Y_OFFSET = 200;
+    const TRIANGLE_LENGTH = 300;
+    const TRIANGLE_WIDTH = 200;
+    const TRIANGLE_BACK_RATIO = 0.3;
+    const SHADOW_ELEVATION = 0.1;
+    const MPS_TO_KT = 1.944;
+    const M_TO_FT = 3.28084;
+
     // Create sim that works in local coordinates
     sim = createSim({
       initialHeadingDeg,
       initialAltitudeMeters: 0, // Relative to origin
       originAltitudeMeters, // Pass origin altitude for absolute target conversion
       onUpdate: (localState) => {
-        // Update Three.js with local coordinates
+        const now = performance.now();
+
+        // Always update Three.js aircraft position (critical for smooth rendering)
         aircraftLayer?.updatePosition?.(
           localState.x,
           localState.y,
@@ -290,117 +315,83 @@ onMounted(() => {
           map.setCenter([lng, lat]);
         }
 
-        // Update breadcrumb trail if we have position history
-        if (localState.positionHistory?.length > 1) {
+        // Throttle trail updates
+        if (now - lastTrailUpdate >= TRAIL_UPDATE_INTERVAL && localState.positionHistory?.length > 1) {
+          lastTrailUpdate = now;
+          if (!trailSource) trailSource = map.getSource('aircraft-trail');
+          
           const coordinates = [];
           const elevations = [];
-
-          // Convert each point in history from local to lat/lon
-          // Trail uses same coordinates as aircraft (aircraft offset handled in Three.js)
           for (const point of localState.positionHistory) {
             const [lng, lat] = localToLatLon(point.x, point.y, point.z);
             coordinates.push([lng, lat]);
-            // Elevation: use ground level (0) when in top-down view, otherwise use actual altitude
-            const elevation = isTopDownView ? 0 : originAltitudeMeters + point.z;
-            elevations.push(elevation);
+            elevations.push(isTopDownView ? 0 : originAltitudeMeters + point.z);
           }
 
-          // Update GeoJSON source
-          const source = map.getSource('aircraft-trail');
-          source?.setData({
+          trailSource?.setData({
             type: 'Feature',
-            properties: {
-              elevation: elevations,
-            },
-            geometry: {
-              type: 'LineString',
-              coordinates: coordinates,
-            },
+            properties: { elevation: elevations },
+            geometry: { type: 'LineString', coordinates },
           });
         }
 
-        // Update aircraft label with heading, speed, and altitude
-        // Convert speed from m/s to knots (1 m/s ≈ 1.944 knots)
-        // Convert altitude from meters to feet (1 m = 3.28084 ft)
-        const speedKt = Math.round(localState.speedMps * 1.944);
-        const altitudeFt = Math.round((originAltitudeMeters + localState.z) * 3.28084);
-        const headingDeg = Math.round(localState.headingDeg);
+        // Throttle label updates
+        if (now - lastLabelUpdate >= LABEL_UPDATE_INTERVAL) {
+          lastLabelUpdate = now;
+          if (!labelSource) labelSource = map.getSource('aircraft-label');
 
-        // Position label above aircraft (offset upward by 50 meters)
-        // Offset to northeast: 400 meters east, 200 meters north
-        const LABEL_ALTITUDE_OFFSET = 50; // meters above aircraft
-        const LABEL_X_OFFSET = 400; // meters east
-        const LABEL_Y_OFFSET = 200; // meters north
-        const labelAltitude = localState.z + LABEL_ALTITUDE_OFFSET;
-        const absoluteLabelAltitude = originAltitudeMeters + labelAltitude;
-        const labelX = localState.x + LABEL_X_OFFSET;
-        const labelY = localState.y - LABEL_Y_OFFSET;
-        const [labelLng, labelLat] = localToLatLon(labelX, labelY, 0);
+          const speedKt = Math.round(localState.speedMps * MPS_TO_KT);
+          const altitudeFt = Math.round((originAltitudeMeters + localState.z) * M_TO_FT);
+          const headingDeg = Math.round(localState.headingDeg);
+          const [labelLng, labelLat] = localToLatLon(
+            localState.x + LABEL_X_OFFSET,
+            localState.y - LABEL_Y_OFFSET,
+            0
+          );
 
-        const labelSource = map.getSource('aircraft-label');
-        labelSource?.setData({
-          type: 'Feature',
-          properties: {
-            heading: headingDeg,
-            speed: speedKt,
-            altitude: altitudeFt,
-            elevation: absoluteLabelAltitude,
-          },
-          geometry: {
-            type: 'Point',
-            coordinates: [labelLng, labelLat],
-          },
-        });
+          labelSource?.setData({
+            type: 'Feature',
+            properties: {
+              heading: headingDeg,
+              speed: speedKt,
+              altitude: altitudeFt,
+              elevation: originAltitudeMeters + localState.z + LABEL_ALTITUDE_OFFSET,
+            },
+            geometry: { type: 'Point', coordinates: [labelLng, labelLat] },
+          });
+        }
 
-        // Update aircraft shadow triangle
-        // Triangle points forward (in heading direction) with shape like aircraft silhouette
-        // Triangle dimensions: 300m long, 200m wide at base
-        const TRIANGLE_LENGTH = 300; // meters (forward direction)
-        const TRIANGLE_WIDTH = 200; // meters (perpendicular to heading)
-        const TRIANGLE_BACK_RATIO = 0.3; // ratio of length for back points
-        const headingRad = toRadians(localState.headingDeg);
+        // Throttle shadow updates
+        if (now - lastShadowUpdate >= SHADOW_UPDATE_INTERVAL) {
+          lastShadowUpdate = now;
+          if (!shadowSource) shadowSource = map.getSource('aircraft-shadow');
 
-        // Cache sin/cos calculations for efficiency
-        const sinH = Math.sin(headingRad);
-        const cosH = Math.cos(headingRad);
+          const headingRad = toRadians(localState.headingDeg);
+          const sinH = Math.sin(headingRad);
+          const cosH = Math.cos(headingRad);
+          const backLength = TRIANGLE_LENGTH * TRIANGLE_BACK_RATIO;
+          const halfWidth = TRIANGLE_WIDTH / 2;
 
-        // Calculate triangle vertices in local coordinates
-        // Center point (aircraft position projected to ground)
-        const centerX = localState.x;
-        const centerY = localState.y;
+          const noseX = localState.x + sinH * TRIANGLE_LENGTH;
+          const noseY = localState.y + cosH * TRIANGLE_LENGTH;
+          const leftX = localState.x - sinH * backLength - cosH * halfWidth;
+          const leftY = localState.y - cosH * backLength + sinH * halfWidth;
+          const rightX = localState.x - sinH * backLength + cosH * halfWidth;
+          const rightY = localState.y - cosH * backLength - sinH * halfWidth;
 
-        // Forward point (nose of triangle)
-        const noseX = centerX + sinH * TRIANGLE_LENGTH;
-        const noseY = centerY + cosH * TRIANGLE_LENGTH;
+          const [noseLng, noseLat] = localToLatLon(noseX, noseY, SHADOW_ELEVATION);
+          const [leftLng, leftLat] = localToLatLon(leftX, leftY, SHADOW_ELEVATION);
+          const [rightLng, rightLat] = localToLatLon(rightX, rightY, SHADOW_ELEVATION);
 
-        // Left wing point (perpendicular to heading, left side)
-        const backLength = TRIANGLE_LENGTH * TRIANGLE_BACK_RATIO;
-        const halfWidth = TRIANGLE_WIDTH / 2;
-        const leftX = centerX - sinH * backLength - cosH * halfWidth;
-        const leftY = centerY - cosH * backLength + sinH * halfWidth;
-
-        // Right wing point (perpendicular to heading, right side)
-        const rightX = centerX - sinH * backLength + cosH * halfWidth;
-        const rightY = centerY - cosH * backLength - sinH * halfWidth;
-
-        // Convert triangle vertices to lat/lon (slightly above ground level, z = 0.1m to render above trail)
-        const SHADOW_ELEVATION = 0.1; // Small offset to ensure shadow renders above trail
-        const [noseLng, noseLat] = localToLatLon(noseX, noseY, SHADOW_ELEVATION);
-        const [leftLng, leftLat] = localToLatLon(leftX, leftY, SHADOW_ELEVATION);
-        const [rightLng, rightLat] = localToLatLon(rightX, rightY, SHADOW_ELEVATION);
-
-        const shadowSource = map.getSource('aircraft-shadow');
-        shadowSource?.setData({
-          type: 'Feature',
-          properties: {
-            heading: headingDeg,
-            elevation: originAltitudeMeters + SHADOW_ELEVATION,
-          },
-          geometry: {
-            type: 'Polygon',
-            coordinates: [[[noseLng, noseLat], [leftLng, leftLat], [rightLng, rightLat], [noseLng, noseLat]]],
-          },
-        });
+          shadowSource?.setData({
+            type: 'Feature',
+            properties: { heading: Math.round(localState.headingDeg), elevation: originAltitudeMeters + SHADOW_ELEVATION },
+            geometry: {
+              type: 'Polygon',
+              coordinates: [[[noseLng, noseLat], [leftLng, leftLat], [rightLng, rightLat], [noseLng, noseLat]]],
+            },
+          });
+        }
       },
     });
 
@@ -419,14 +410,33 @@ onMounted(() => {
     // Track camera pitch to detect top-down view
     function updateTopDownState() {
       const pitch = map.getPitch();
-      // Consider top-down when pitch is very close to 0 (within 5 degrees)
       isTopDownView = Math.abs(pitch) < 5;
-      // Trail will update on next frame automatically with new elevation
     }
 
-    // Listen for pitch changes (when user clicks north-south button or drags)
-    map.on('pitch', updateTopDownState);
-    map.on('move', updateTopDownState);
+    // Listen for pitch changes (throttled to reduce overhead)
+    let pitchUpdateTimeout = null;
+    const throttledUpdateTopDown = () => {
+      if (pitchUpdateTimeout) return;
+      pitchUpdateTimeout = setTimeout(() => {
+        updateTopDownState();
+        pitchUpdateTimeout = null;
+      }, 50);
+    };
+
+    map.on('pitch', throttledUpdateTopDown);
+    map.on('move', throttledUpdateTopDown);
+    
+    // Store cleanup function for map events
+    cleanupMapEvents = () => {
+      if (map) {
+        map.off('pitch', throttledUpdateTopDown);
+        map.off('move', throttledUpdateTopDown);
+      }
+      if (pitchUpdateTimeout) {
+        clearTimeout(pitchUpdateTimeout);
+        pitchUpdateTimeout = null;
+      }
+    };
     
     // Initialize state
     updateTopDownState();
@@ -509,11 +519,30 @@ function setSpeed() {
   }
 }
 
+function setAll() {
+  if (sim) {
+    if (headingInput.value !== null && headingInput.value !== '') {
+      sim.setHeading(headingInput.value);
+    }
+    if (altitudeInput.value !== null && altitudeInput.value !== '') {
+      sim.setAltitude(altitudeInput.value);
+    }
+    if (speedInputValue.value !== null && speedInputValue.value !== '') {
+      sim.setSpeed(speedInputValue.value);
+    }
+  }
+}
+
 onUnmounted(() => {
   // Clean up keyboard controls
   if (window._cleanupKeyboardControls) {
     window._cleanupKeyboardControls();
     delete window._cleanupKeyboardControls;
+  }
+
+  // Clean up map event listeners
+  if (map && cleanupMapEvents) {
+    cleanupMapEvents();
   }
 
   if (sim) {
@@ -522,6 +551,11 @@ onUnmounted(() => {
   if (map) {
     map.remove();
   }
+  
+  // Clear cached sources
+  trailSource = null;
+  labelSource = null;
+  shadowSource = null;
 });
 </script>
 
@@ -599,11 +633,20 @@ onUnmounted(() => {
   border-radius: 4px;
   font-size: 13px;
   width: 70px;
+  appearance: textfield;
+  -moz-appearance: textfield;
 }
 
 .control-input:focus {
   outline: none;
   border-color: #4caf50;
+}
+
+/* Hide spinner buttons in number inputs */
+.control-input::-webkit-inner-spin-button,
+.control-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .control-btn {
@@ -624,5 +667,36 @@ onUnmounted(() => {
 
 .control-btn:active {
   background: #3d8b40;
+}
+
+.set-all-btn {
+  margin-top: 8px;
+  padding: 8px 16px;
+  background: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  width: 100%;
+}
+
+.set-all-btn:hover {
+  background: #45a049;
+}
+
+.set-all-btn:active {
+  background: #3d8b40;
+}
+
+/* Hide Mapbox logo and attribution */
+:deep(.mapboxgl-ctrl-logo) {
+  display: none !important;
+}
+
+:deep(.mapboxgl-ctrl-attrib) {
+  display: none !important;
 }
 </style>

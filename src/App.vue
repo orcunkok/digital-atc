@@ -18,4 +18,13 @@ import MapboxTerrain from './components/MapboxTerrain.vue';
 #app {
   font-family: Avenir, Helvetica, Arial, sans-serif;
 }
+
+/* Hide Mapbox logo and attribution */
+.mapboxgl-ctrl-logo {
+  display: none !important;
+}
+
+.mapboxgl-ctrl-attrib {
+  display: none !important;
+}
 </style>

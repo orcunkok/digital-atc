@@ -62,9 +62,12 @@ export function createAircraftLayer({
       });
 
       this.renderer.autoClear = false;
-      this.renderer.setPixelRatio(window.devicePixelRatio);
+      // Use device pixel ratio but cap at 2 for performance
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       this.renderer.outputEncoding = THREE.sRGBEncoding;
       this.renderer.toneMapping = THREE.NoToneMapping;
+      // Disable shadow maps for better performance
+      this.renderer.shadowMap.enabled = false;
 
       // Load GLB model
       const loader = new GLTFLoader();
@@ -163,7 +166,7 @@ export function createAircraftLayer({
         return; // Don't render aircraft in top-down view
       }
 
-      // Update renderer size to match canvas
+      // Update renderer size to match canvas (only when changed)
       const canvas = this.map.getCanvas();
       const width = canvas.width;
       const height = canvas.height;
@@ -171,12 +174,16 @@ export function createAircraftLayer({
         this.renderer.setSize(width, height, false);
       }
 
-      // Update camera projection matrix from Mapbox
-      this.camera.projectionMatrix = new THREE.Matrix4().fromArray(matrix);
+      // Reuse matrix object if possible to reduce allocations
+      if (!this._tempMatrix) {
+        this._tempMatrix = new THREE.Matrix4();
+      }
+      this._tempMatrix.fromArray(matrix);
+      this.camera.projectionMatrix = this._tempMatrix;
 
       this.renderer.resetState();
       this.renderer.render(this.scene, this.camera);
-      this.map.triggerRepaint();
+      // Only trigger repaint if needed (Mapbox will handle most cases)
     },
 
     /**
