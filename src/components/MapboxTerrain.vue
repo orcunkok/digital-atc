@@ -118,6 +118,54 @@ onMounted(() => {
       },
     });
 
+    // Create GeoJSON source for aircraft label
+    map.addSource('aircraft-label', {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        properties: {
+          heading: 0,
+          speed: 0,
+          altitude: 0,
+          elevation: originAltitudeMeters,
+        },
+        geometry: {
+          type: 'Point',
+          coordinates: [originLon, originLat],
+        },
+      },
+    });
+
+    // Add symbol layer for aircraft label with formatted text
+    map.addLayer({
+      id: 'aircraft-label-layer',
+      type: 'symbol',
+      source: 'aircraft-label',
+      layout: {
+        'text-field': [
+          'format',
+          ['get', 'heading'],
+          { 'font-scale': 1.0 },
+          '°|',
+          {},
+          ['get', 'speed'],
+          { 'font-scale': 1.0 },
+          'kt|',
+          {},
+          ['get', 'altitude'],
+          { 'font-scale': 1.0 },
+          'ft',
+        ],
+        'text-size': 14,
+        'text-anchor': 'center',
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: {
+        'text-color': '#000000'
+      },
+    });
+
     // Helper function to convert local coordinates to lat/lon
     function localToLatLon(localX, localY, localZ) {
       const mercatorX = originMercator.x + localX * meterScale;
@@ -176,6 +224,39 @@ onMounted(() => {
               },
             });
           }
+        }
+
+        // Update aircraft label with heading, speed, and altitude
+        // Convert speed from m/s to knots (1 m/s ≈ 1.944 knots)
+        // Convert altitude from meters to feet (1 m = 3.28084 ft)
+        const speedKt = Math.round(localState.speedMps * 1.944);
+        const altitudeFt = Math.round((originAltitudeMeters + localState.z) * 3.28084);
+        const headingDeg = Math.round(localState.headingDeg);
+
+        // Position label above aircraft (offset upward by ~50 meters)
+        const labelAltitude = localState.z + 50;
+        const absoluteLabelAltitude = originAltitudeMeters + labelAltitude;
+        const [labelLng, labelLat] = localToLatLon(
+          localState.x,
+          localState.y,
+          labelAltitude
+        );
+
+        const labelSource = map.getSource('aircraft-label');
+        if (labelSource) {
+          labelSource.setData({
+            type: 'Feature',
+            properties: {
+              heading: headingDeg,
+              speed: speedKt,
+              altitude: altitudeFt,
+              elevation: absoluteLabelAltitude,
+            },
+            geometry: {
+              type: 'Point',
+              coordinates: [labelLng, labelLat],
+            },
+          });
         }
       },
     });
