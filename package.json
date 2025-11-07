@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "lucide-vue-next": "^0.553.0",
     "mapbox-gl": "^3.15.0",
     "three": "^0.181.0",
     "vue": "^3.5.22"

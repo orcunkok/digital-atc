@@ -1,15 +1,21 @@
 <template>
-  <div ref="mapContainer" class="map-container"></div>
+  <div ref="mapContainer" class="map-container">
+    <button @click="toggleFollow" class="follow-btn" :class="{ active: isFollowing }">
+      <SwitchCamera :size="20" />
+    </button>
+  </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
+import { SwitchCamera } from 'lucide-vue-next';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { createAircraftLayer } from './MapboxThree';
 import { createSim } from './sim';
 
 const mapContainer = ref(null);
+const isFollowing = ref(true);
 let map = null;
 let aircraftLayer = null;
 let sim = null;
@@ -230,6 +236,12 @@ onMounted(() => {
           localState.pitchAngleDeg || 0
         );
 
+        // Update camera to follow aircraft if follow mode is enabled
+        if (isFollowing.value) {
+          const [lng, lat] = localToLatLon(localState.x, localState.y, localState.z);
+          map.setCenter([lng, lat]);
+        }
+
         // Update breadcrumb trail if we have position history
         if (localState.positionHistory?.length > 1) {
           const coordinates = [];
@@ -427,6 +439,10 @@ onMounted(() => {
   });
 });
 
+function toggleFollow() {
+  isFollowing.value = !isFollowing.value;
+}
+
 onUnmounted(() => {
   // Clean up keyboard controls
   if (window._cleanupKeyboardControls) {
@@ -447,5 +463,37 @@ onUnmounted(() => {
 .map-container {
   width: 100%;
   height: 100vh;
+  position: relative;
+}
+
+.follow-btn {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  background: #9e9e9e;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.follow-btn:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.follow-btn.active {
+  background: #4caf50;
+}
+
+.follow-btn svg {
+  color: #000;
 }
 </style>
