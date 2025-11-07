@@ -153,10 +153,10 @@ onMounted(() => {
 
           // Convert each point in history from local to lat/lon
           for (const point of localState.positionHistory) {
-            const [lng, lat] = localToLatLon(point.x, point.y, point.z);
+            const [lng, lat] = localToLatLon(point.x+55, point.y-220, point.z); //some custom offsets for trail line to be centered on the aircraft
             coordinates.push([lng, lat]);
             // Elevation in meters (absolute altitude)
-            elevations.push(originAltitudeMeters + point.z);
+            elevations.push(originAltitudeMeters+20);
           }
 
           // Update GeoJSON source
@@ -180,8 +180,14 @@ onMounted(() => {
     // Start simulation
     sim.start();
 
-    // Add navigation controls
-    map.addControl(new mapboxgl.NavigationControl());
+    // Add navigation controls (visualizePitch enables 2D/3D toggle)
+    map.addControl(
+      new mapboxgl.NavigationControl({
+        visualizePitch: true,
+        showCompass: true,
+        showZoom: true,
+      })
+    );
   });
 });
 

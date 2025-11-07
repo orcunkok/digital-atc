@@ -18,6 +18,7 @@ guidance:
   - Never mutate schemas; import and consume them for validation only.
   - Copy-pasteable CLI in docs/examples using bash fences without "$ " prompt.
   - Avoid heavy dependencies; prefer vanilla utilities for math and formatting.
+  - Do not try to add custom calculations, functions or buttons where mapbox api already has it. Do nto bloat the codebase use their provided apis as much as possible except when you are explilitly asked to do so or there is no other way.
 notes:
   - When reading response JSON, clamp and sanity-check numeric ranges before applying.
   - Avoid reactivity pitfalls: keep sim state in a dedicated module, emit events to UI.
