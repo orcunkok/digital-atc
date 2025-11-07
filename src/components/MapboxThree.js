@@ -36,9 +36,9 @@ export function createAircraftLayer({
       this.originMercator = originMercator;
       this.scale = scale;
 
-      // Add directional light
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-      directionalLight.position.set(0, 70, 100).normalize();
+      // Add directional light (from above - positive Z is up in this coordinate system)
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
+      directionalLight.position.set(10000, -6000000, 10000).normalize();
       this.scene.add(directionalLight);
 
       // Add ambient light

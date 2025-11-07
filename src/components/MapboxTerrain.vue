@@ -274,7 +274,7 @@ onMounted(() => {
         const [labelLng, labelLat] = localToLatLon(
           labelX,
           labelY,
-          labelAltitude
+          0
         );
 
         const labelSource = map.getSource('aircraft-label');
