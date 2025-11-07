@@ -53,9 +53,14 @@ export function createAircraftLayer({
         canvas: map.getCanvas(),
         context: gl,
         antialias: true,
+        alpha: true,
+        preserveDrawingBuffer: false,
       });
 
       this.renderer.autoClear = false;
+      this.renderer.setPixelRatio(window.devicePixelRatio);
+      this.renderer.outputEncoding = THREE.sRGBEncoding;
+      this.renderer.toneMapping = THREE.NoToneMapping;
 
       // Load GLB model
       const loader = new GLTFLoader();
@@ -63,6 +68,46 @@ export function createAircraftLayer({
         modelPath,
         (gltf) => {
           this.aircraft = gltf.scene;
+
+          // Configure textures and materials for better rendering
+          gltf.scene.traverse((child) => {
+            if (child.isMesh) {
+              // Configure materials
+              if (child.material) {
+                // Handle both single material and material arrays
+                const materials = Array.isArray(child.material) 
+                  ? child.material 
+                  : [child.material];
+
+                materials.forEach((material) => {
+                  // Enable proper rendering
+                  material.needsUpdate = true;
+                  
+                  // Configure texture filtering if textures exist
+                  if (material.map) {
+                    material.map.minFilter = THREE.LinearMipmapLinearFilter;
+                    material.map.magFilter = THREE.LinearFilter;
+                    material.map.generateMipmaps = true;
+                    material.map.needsUpdate = true;
+                  }
+                  
+                  // Set material properties for better rendering
+                  material.side = THREE.DoubleSide;
+                  material.flatShading = false;
+                  
+                  // Ensure proper encoding
+                  if (material.map) {
+                    material.map.encoding = THREE.sRGBEncoding;
+                  }
+                });
+              }
+
+              // Ensure geometry is properly configured
+              if (child.geometry) {
+                child.geometry.computeVertexNormals();
+              }
+            }
+          });
 
           // Model origin is at right engine, offset to center the model
           // Create parent group to hold offset (in model-local space, rotates with aircraft)
@@ -106,6 +151,20 @@ export function createAircraftLayer({
     render: function (gl, matrix) {
       if (!this.aircraftGroup) {
         return; // Don't render until model is loaded
+      }
+
+      // Skip rendering when camera is in top-down view (pitch close to 0)
+      const pitch = this.map.getPitch();
+      if (Math.abs(pitch) < 5) {
+        return; // Don't render aircraft in top-down view
+      }
+
+      // Update renderer size to match canvas
+      const canvas = this.map.getCanvas();
+      const width = canvas.width;
+      const height = canvas.height;
+      if (this.renderer.domElement.width !== width || this.renderer.domElement.height !== height) {
+        this.renderer.setSize(width, height, false);
       }
 
       // Update camera projection matrix from Mapbox

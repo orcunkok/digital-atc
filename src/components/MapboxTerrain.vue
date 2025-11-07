@@ -15,6 +15,7 @@ let aircraftLayer = null;
 let sim = null;
 let originMercator = null;
 let meterScale = null;
+let isTopDownView = false;
 
 // Aircraft origin from KOAK_IFR_vectors_goaround scenario (lat/lon)
 const originLat = 37.70;
@@ -114,7 +115,37 @@ onMounted(() => {
       paint: {
         'line-emissive-strength': 1.0,
         'line-width': 6,
-        'line-color': '#40e0d0', // Turquoise
+        'line-color': '#F4D6CC',
+        'line-opacity': 0.7,
+      },
+    });
+
+    // Create GeoJSON source for aircraft shadow triangle
+    map.addSource('aircraft-shadow', {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        properties: {
+          heading: 0,
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[]],
+        },
+      },
+    });
+
+    // Add fill-extrusion layer for aircraft shadow (after trail so it renders on top)
+    // Using fill-extrusion with minimal height ensures it renders above the trail
+    map.addLayer({
+      id: 'aircraft-shadow-layer',
+      type: 'fill-extrusion',
+      source: 'aircraft-shadow',
+      paint: {
+        'fill-extrusion-color': '#C83E4D',
+        'fill-extrusion-opacity': 1,
+        'fill-extrusion-height': 0.1, // Very small height to ensure it's above trail
+        'fill-extrusion-base': 0,
       },
     });
 
@@ -206,8 +237,9 @@ onMounted(() => {
           for (const point of localState.positionHistory) {
             const [lng, lat] = localToLatLon(point.x, point.y, point.z);
             coordinates.push([lng, lat]);
-            // Elevation in meters (absolute altitude)
-            elevations.push(originAltitudeMeters + point.z);
+            // Elevation: use ground level (0) when in top-down view, otherwise use actual altitude
+            const elevation = isTopDownView ? 0 : originAltitudeMeters + point.z;
+            elevations.push(elevation);
           }
 
           // Update GeoJSON source
@@ -234,11 +266,14 @@ onMounted(() => {
         const headingDeg = Math.round(localState.headingDeg);
 
         // Position label above aircraft (offset upward by ~50 meters)
+        // Offset to northeast by 100 meters in each direction
         const labelAltitude = localState.z + 50;
         const absoluteLabelAltitude = originAltitudeMeters + labelAltitude;
+        const labelX = localState.x + 400; // 100 meters east
+        const labelY = localState.y - 200; // 100 meters north
         const [labelLng, labelLat] = localToLatLon(
-          localState.x,
-          localState.y,
+          labelX,
+          labelY,
           labelAltitude
         );
 
@@ -258,6 +293,51 @@ onMounted(() => {
             },
           });
         }
+
+        // Update aircraft shadow triangle
+        // Triangle points forward (in heading direction) with shape like aircraft silhouette
+        // Triangle dimensions: ~30m long, ~20m wide at base
+        const triangleLength = 300; // meters (forward direction)
+        const triangleWidth = 200; // meters (perpendicular to heading)
+        const headingRad = (localState.headingDeg * Math.PI) / 180;
+
+        // Calculate triangle vertices in local coordinates
+        // Center point (aircraft position projected to ground)
+        const centerX = localState.x;
+        const centerY = localState.y;
+
+        // Forward point (nose of triangle)
+        const noseX = centerX + Math.sin(headingRad) * triangleLength;
+        const noseY = centerY + Math.cos(headingRad) * triangleLength;
+
+        // Left wing point (perpendicular to heading, left side)
+        const leftX = centerX - Math.sin(headingRad) * (triangleLength * 0.3) - Math.cos(headingRad) * (triangleWidth / 2);
+        const leftY = centerY - Math.cos(headingRad) * (triangleLength * 0.3) + Math.sin(headingRad) * (triangleWidth / 2);
+
+        // Right wing point (perpendicular to heading, right side)
+        const rightX = centerX - Math.sin(headingRad) * (triangleLength * 0.3) + Math.cos(headingRad) * (triangleWidth / 2);
+        const rightY = centerY - Math.cos(headingRad) * (triangleLength * 0.3) - Math.sin(headingRad) * (triangleWidth / 2);
+
+        // Convert triangle vertices to lat/lon (slightly above ground level, z = 0.1m to render above trail)
+        const shadowElevation = 0.1; // Small offset to ensure shadow renders above trail
+        const [noseLng, noseLat] = localToLatLon(noseX, noseY, shadowElevation);
+        const [leftLng, leftLat] = localToLatLon(leftX, leftY, shadowElevation);
+        const [rightLng, rightLat] = localToLatLon(rightX, rightY, shadowElevation);
+
+        const shadowSource = map.getSource('aircraft-shadow');
+        if (shadowSource) {
+          shadowSource.setData({
+            type: 'Feature',
+            properties: {
+              heading: headingDeg,
+              elevation: originAltitudeMeters + shadowElevation,
+            },
+            geometry: {
+              type: 'Polygon',
+              coordinates: [[[noseLng, noseLat], [leftLng, leftLat], [rightLng, rightLat], [noseLng, noseLat]]],
+            },
+          });
+        }
       },
     });
 
@@ -272,6 +352,21 @@ onMounted(() => {
         showZoom: true,
       })
     );
+
+    // Track camera pitch to detect top-down view
+    function updateTopDownState() {
+      const pitch = map.getPitch();
+      // Consider top-down when pitch is very close to 0 (within 5 degrees)
+      isTopDownView = Math.abs(pitch) < 5;
+      // Trail will update on next frame automatically with new elevation
+    }
+
+    // Listen for pitch changes (when user clicks north-south button or drags)
+    map.on('pitch', updateTopDownState);
+    map.on('move', updateTopDownState);
+    
+    // Initialize state
+    updateTopDownState();
 
     // Keyboard controls for aircraft
     const pressedKeys = new Set();

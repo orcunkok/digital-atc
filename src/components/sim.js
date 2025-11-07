@@ -13,9 +13,9 @@ export function createSim({
   onUpdate,
 }) {
   // Simulation parameters
-  const minSpeedMps = 50; // Minimum speed (meters per second)
-  const maxSpeedMps = 100; // Maximum speed (meters per second)
-  const speedAccelMps2 = 50; // Speed acceleration (m/s²)
+  const minSpeedMps = 60; // Minimum speed (meters per second)
+  const maxSpeedMps = 130; // Maximum speed (meters per second)
+  const speedAccelMps2 = 10; // Speed acceleration (m/s²)
   const maxTurnRateDegps = 3; // Maximum turn rate (degrees per second)
   const bankAngleSmoothingRate = 15; // Bank angle change rate (degrees per second)
   const g = 9.81; // Gravitational acceleration (m/s²)
