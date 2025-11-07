@@ -3,6 +3,50 @@
     <button @click="toggleFollow" class="follow-btn" :class="{ active: isFollowing }">
       <SwitchCamera :size="20" />
     </button>
+    <div class="automation-controls">
+      <div class="control-group">
+        <label for="heading-input">Heading</label>
+        <input
+          id="heading-input"
+          v-model.number="headingInput"
+          type="number"
+          min="0"
+          max="360"
+          placeholder="000"
+          @keyup.enter="setHeading"
+          class="control-input"
+        />
+        <button @click="setHeading" class="control-btn">Set</button>
+      </div>
+      <div class="control-group">
+        <label for="altitude-input">Altitude</label>
+        <input
+          id="altitude-input"
+          v-model.number="altitudeInput"
+          type="number"
+          min="-1000"
+          max="60000"
+          placeholder="10000"
+          @keyup.enter="setAltitude"
+          class="control-input"
+        />
+        <button @click="setAltitude" class="control-btn">Set</button>
+      </div>
+      <div class="control-group">
+        <label for="speed-input">Speed</label>
+        <input
+          id="speed-input"
+          v-model.number="speedInputValue"
+          type="number"
+          min="40"
+          max="400"
+          placeholder="120"
+          @keyup.enter="setSpeed"
+          class="control-input"
+        />
+        <button @click="setSpeed" class="control-btn">Set</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -16,6 +60,9 @@ import { createSim } from './sim';
 
 const mapContainer = ref(null);
 const isFollowing = ref(true);
+const headingInput = ref(null);
+const altitudeInput = ref(null);
+const speedInputValue = ref(null);
 let map = null;
 let aircraftLayer = null;
 let sim = null;
@@ -225,6 +272,7 @@ onMounted(() => {
     sim = createSim({
       initialHeadingDeg,
       initialAltitudeMeters: 0, // Relative to origin
+      originAltitudeMeters, // Pass origin altitude for absolute target conversion
       onUpdate: (localState) => {
         // Update Three.js with local coordinates
         aircraftLayer?.updatePosition?.(
@@ -443,6 +491,24 @@ function toggleFollow() {
   isFollowing.value = !isFollowing.value;
 }
 
+function setHeading() {
+  if (sim && headingInput.value !== null && headingInput.value !== '') {
+    sim.setHeading(headingInput.value);
+  }
+}
+
+function setAltitude() {
+  if (sim && altitudeInput.value !== null && altitudeInput.value !== '') {
+    sim.setAltitude(altitudeInput.value);
+  }
+}
+
+function setSpeed() {
+  if (sim && speedInputValue.value !== null && speedInputValue.value !== '') {
+    sim.setSpeed(speedInputValue.value);
+  }
+}
+
 onUnmounted(() => {
   // Clean up keyboard controls
   if (window._cleanupKeyboardControls) {
@@ -495,5 +561,68 @@ onUnmounted(() => {
 
 .follow-btn svg {
   color: #000;
+}
+
+.automation-controls {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 12px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  min-width: 180px;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.control-group label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+  min-width: 60px;
+  text-align: right;
+}
+
+.control-input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+  width: 70px;
+}
+
+.control-input:focus {
+  outline: none;
+  border-color: #4caf50;
+}
+
+.control-btn {
+  padding: 6px 12px;
+  background: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.control-btn:hover {
+  background: #45a049;
+}
+
+.control-btn:active {
+  background: #3d8b40;
 }
 </style>

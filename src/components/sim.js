@@ -10,6 +10,7 @@
 export function createSim({
   initialHeadingDeg = 0,
   initialAltitudeMeters = 1000,
+  originAltitudeMeters = 0, // Absolute altitude of origin (for converting absolute targets to relative)
   onUpdate,
 }) {
   // Helper function for degree-to-radian conversion
@@ -43,6 +44,11 @@ export function createSim({
   let turnInput = 0; // -1 to 1 (left to right)
   let pitchInput = 0; // -1 to 1 (descend to climb)
 
+  // Target values for automation (null = no target)
+  let targetSpeedKt = null; // Target speed in knots
+  let targetHeadingDeg = null; // Target heading in degrees
+  let targetAltitudeFt = null; // Target altitude in feet (absolute, not relative)
+
   let lastTimestamp = null;
   let animationFrameId = null;
   let isRunning = false;
@@ -67,14 +73,57 @@ export function createSim({
       return;
     }
 
-    // Update speed based on input
+    // Update speed based on input or automation target
+    if (targetSpeedKt !== null) {
+      // Convert target speed from knots to m/s (1 kt = 0.514444 m/s)
+      const targetSpeedMps = targetSpeedKt * 0.514444;
+      const speedDiff = targetSpeedMps - speedMps;
+      const speedTolerance = 0.5; // 0.5 m/s tolerance
+      
+      if (Math.abs(speedDiff) > speedTolerance) {
+        // Calculate required speed input to reach target
+        const maxSpeedChange = speedAccelMps2 * deltaTime;
+        if (speedDiff > 0) {
+          speedInput = Math.min(1, speedDiff / maxSpeedChange);
+        } else {
+          speedInput = Math.max(-1, speedDiff / maxSpeedChange);
+        }
+      } else {
+        // Close enough, maintain current speed
+        speedInput = 0;
+      }
+    }
+    
     const speedChange = speedInput * speedAccelMps2 * deltaTime;
     speedMps = Math.max(minSpeedMps, Math.min(maxSpeedMps, speedMps + speedChange));
 
     // Calculate target bank angle from turn rate and speed
     // Physics: turn_rate (rad/s) = (g * tan(bank_angle)) / speed
     // So: bank_angle = atan((turn_rate * speed) / g)
-    const turnRate = turnInput * maxTurnRateDegps;
+    let turnRate = turnInput * maxTurnRateDegps;
+    
+    // Automation: calculate turn input to reach target heading
+    if (targetHeadingDeg !== null) {
+      // Calculate shortest angular distance to target heading
+      let headingDiff = targetHeadingDeg - headingDeg;
+      // Normalize to [-180, 180]
+      if (headingDiff > 180) headingDiff -= 360;
+      if (headingDiff < -180) headingDiff += 360;
+      
+      const headingTolerance = 1; // 1 degree tolerance
+      if (Math.abs(headingDiff) > headingTolerance) {
+        // Calculate required turn rate (proportional control)
+        const maxTurnRate = maxTurnRateDegps;
+        const desiredTurnRate = Math.max(-maxTurnRate, Math.min(maxTurnRate, headingDiff * 2)); // P-gain of 2
+        turnInput = desiredTurnRate / maxTurnRate;
+      } else {
+        // Close enough, stop turning
+        turnInput = 0;
+      }
+      
+      turnRate = turnInput * maxTurnRateDegps;
+    }
+    
     let targetBankAngleDeg = 0;
     if (Math.abs(turnRate) > 0.1 && speedMps > 10) {
       // Convert turn rate to radians per second
@@ -94,9 +143,37 @@ export function createSim({
       bankAngleDeg = targetBankAngleDeg;
     }
 
-    // Calculate target pitch angle from pitch input
+    // Calculate target pitch angle from pitch input or automation target
     let targetPitchAngleDeg = 0;
-    if (Math.abs(pitchInput) > 0.1) {
+    
+    if (targetAltitudeFt !== null) {
+      // Convert target altitude from feet to meters (1 ft = 0.3048 m)
+      // Target altitude is absolute, so convert to relative to origin
+      const targetAltitudeMetersAbsolute = targetAltitudeFt / 3.28084;
+      const targetAltitudeMeters = targetAltitudeMetersAbsolute - originAltitudeMeters;
+      const altitudeDiff = targetAltitudeMeters - z;
+      const altitudeTolerance = 10; // 10 meters tolerance
+      
+      if (Math.abs(altitudeDiff) > altitudeTolerance) {
+        // Calculate required vertical speed to reach target
+        // Use proportional control with rate limiting
+        const maxVerticalSpeedMps = altitudeDiff > 0 ? maxClimbRateMps : maxDescentRateMps;
+        const desiredVerticalSpeedMps = Math.max(-maxDescentRateMps, Math.min(maxClimbRateMps, altitudeDiff * 0.1)); // P-gain of 0.1
+        
+        // Convert vertical speed to pitch angle
+        // pitch = asin(vertical_speed / speed)
+        if (speedMps > 10) {
+          const requiredPitchRad = Math.asin(Math.max(-1, Math.min(1, desiredVerticalSpeedMps / speedMps)));
+          const requiredPitchDeg = toDegrees(requiredPitchRad);
+          targetPitchAngleDeg = Math.max(-maxPitchAngleDeg, Math.min(maxPitchAngleDeg, requiredPitchDeg));
+          pitchInput = targetPitchAngleDeg / maxPitchAngleDeg;
+        }
+      } else {
+        // Close enough, level off
+        pitchInput = 0;
+        targetPitchAngleDeg = 0;
+      }
+    } else if (Math.abs(pitchInput) > 0.1) {
       // Calculate target pitch angle based on input
       // Positive pitchInput = climb (nose up), negative = descend (nose down)
       targetPitchAngleDeg = pitchInput * maxPitchAngleDeg;
@@ -245,6 +322,9 @@ export function createSim({
       speedInput = 0;
       turnInput = 0;
       pitchInput = 0;
+      targetSpeedKt = null;
+      targetHeadingDeg = null;
+      targetAltitudeFt = null;
       positionHistory = [];
       lastUpdateTime = null;
       cumulativeDistance = 0;
@@ -254,9 +334,19 @@ export function createSim({
       // speed: -1 (slow down) to 1 (speed up)
       // turn: -1 (left) to 1 (right)
       // pitch: -1 (descend) to 1 (climb)
-      if (speed !== undefined) speedInput = Math.max(-1, Math.min(1, speed));
-      if (turn !== undefined) turnInput = Math.max(-1, Math.min(1, turn));
-      if (pitch !== undefined) pitchInput = Math.max(-1, Math.min(1, pitch));
+      // Manual controls override automation
+      if (speed !== undefined) {
+        speedInput = Math.max(-1, Math.min(1, speed));
+        if (speed !== 0) targetSpeedKt = null; // Clear automation if manual control
+      }
+      if (turn !== undefined) {
+        turnInput = Math.max(-1, Math.min(1, turn));
+        if (turn !== 0) targetHeadingDeg = null; // Clear automation if manual control
+      }
+      if (pitch !== undefined) {
+        pitchInput = Math.max(-1, Math.min(1, pitch));
+        if (pitch !== 0) targetAltitudeFt = null; // Clear automation if manual control
+      }
     },
 
     getState() {
@@ -268,6 +358,47 @@ export function createSim({
         bankAngleDeg,
         pitchAngleDeg,
         speedMps,
+      };
+    },
+
+    // Automation functions: set target values (wrapper functions)
+    setSpeed(targetSpeedKnots) {
+      // Input: speed in knots
+      // Clamp to reasonable limits (40-400 kt based on response schema)
+      targetSpeedKt = Math.max(40, Math.min(400, targetSpeedKnots));
+    },
+
+    setHeading(targetHeadingDegrees) {
+      // Input: heading in degrees (0-360)
+      // Normalize to 0-360 range
+      targetHeadingDeg = ((targetHeadingDegrees % 360) + 360) % 360;
+    },
+
+    setAltitude(targetAltitudeFeet) {
+      // Input: altitude in feet (absolute, not relative)
+      // Clamp to reasonable limits (-1000 to 60000 ft based on response schema)
+      targetAltitudeFt = Math.max(-1000, Math.min(60000, targetAltitudeFeet));
+    },
+
+    // Clear automation targets
+    clearSpeed() {
+      targetSpeedKt = null;
+    },
+
+    clearHeading() {
+      targetHeadingDeg = null;
+    },
+
+    clearAltitude() {
+      targetAltitudeFt = null;
+    },
+
+    // Get current targets
+    getTargets() {
+      return {
+        speedKt: targetSpeedKt,
+        headingDeg: targetHeadingDeg,
+        altitudeFt: targetAltitudeFt,
       };
     },
   };
