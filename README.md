@@ -1,15 +1,14 @@
-# Digital ATC
-
 <div align="center">
+  <h1>Digital ATC</h1>
   <img src="public/logo.svg" alt="Digital ATC Logo" width="120" height="120">
-  
-  <h3>Flight simulation for AI development</h3>
+
+  <h4>Flight simulation for AI development</h4>
   <p>Build LLMs and algorithms without fighting with overly complex simulators</p>
 </div>
 
 ---
 
-![Digital ATC Application](public/screenshot.png)
+![Digital ATC Application](docs/screenshot.png)
 
 ## What This Is
 
@@ -107,6 +106,6 @@ That's it. No Docker, no WSL, no 50GB downloads. Just works.
 ---
 
 <div align="center">
-  <img src="public/dsb_robotics.png" alt="dsb robotics" height="40">
+  <img src="docs/dsb_robotics.png" alt="dsb robotics" height="40">
   <p><small>MIT License</small></p>
 </div>
