@@ -300,10 +300,9 @@
             </select>
           </div>
           <div class="playback-controls">
-            <button class="btn btn-primary">Start</button>
-            <button class="btn">Pause</button>
-            <button class="btn">Step</button>
-            <button class="btn">Reset</button>
+            <button class="btn" :class="{ 'is-active': !isPaused }" @click="startSimulation">Start</button>
+            <button class="btn" :class="{ 'is-active': isPaused }" @click="pauseSimulation">Pause</button>
+            <button class="btn" @click="resetScenario">Reset</button>
           </div>
         </div>
 
@@ -404,7 +403,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { Unlock, Lock } from 'lucide-vue-next';
 import MapboxTerrain from './components/MapboxTerrain.vue';
 import { useSimState } from './composables/useSimState';
@@ -413,6 +412,7 @@ const { simState } = useSimState();
 const mapRef = ref(null);
 const isFollowing = ref(true);
 const is2D = ref(false);
+const isPaused = ref(false);
 
 // UI state
 const activeTab = ref('state');
@@ -470,13 +470,28 @@ function sendATC() {
 }
 
 function toggleFollow() {
-  isFollowing.value = true;
   mapRef.value?.toggleFollow?.();
+  isFollowing.value = mapRef.value?.isFollowing;
 }
 
 function toggleCenter() {
   isFollowing.value = false;
   mapRef.value?.centerOnAircraft?.();
+}
+
+function startSimulation() {
+  mapRef.value?.start?.();
+  isPaused.value = false;
+}
+
+function pauseSimulation() {
+  mapRef.value?.pause?.();
+  isPaused.value = true;
+}
+
+function resetScenario() {
+  mapRef.value?.reset?.();
+  isPaused.value = false;
 }
 
 function setViewMode(mode) {
@@ -485,11 +500,30 @@ function setViewMode(mode) {
   mapRef.value?.setPitch?.(pitch);
 }
 
+// Handle space key for pause/play toggle
+function handleKeyPress(event) {
+  if (event.code === 'Space' && event.target.tagName !== 'INPUT' && event.target.tagName !== 'TEXTAREA') {
+    event.preventDefault();
+    mapRef.value?.togglePause?.();
+    // Sync paused state from sim
+    const running = mapRef.value?.isRunning;
+    if (typeof running === 'boolean') {
+      isPaused.value = !running;
+    } else {
+      // Fallback toggle if not immediately available
+      isPaused.value = !isPaused.value;
+    }
+  }
+}
+
 // Sync initial state when map loads
 onMounted(() => {
+  // Add space key listener
+  window.addEventListener('keydown', handleKeyPress);
+
   // Check initial pitch after a short delay to ensure map is loaded
   setTimeout(() => {
-    const followState = mapRef.value?.isFollowing?.value;
+    const followState = mapRef.value?.isFollowing;
     if (followState !== undefined) {
       isFollowing.value = followState;
     }
@@ -498,7 +532,17 @@ onMounted(() => {
     if (pitch !== undefined) {
       is2D.value = pitch < 5;
     }
+
+    const running = mapRef.value?.isRunning;
+    if (typeof running === 'boolean') {
+      isPaused.value = !running;
+    }
   }, 500);
+});
+
+// Cleanup
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyPress);
 });
 </script>
 

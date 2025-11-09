@@ -6,6 +6,11 @@
 
 :root {
   font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  /* Global theme variables */
+  --color-active-bg: #1a1a1a;
+  --color-active-fg: #ffffff;
+  --color-button-bg: rgba(255, 255, 255, 0.95);
+  --color-button-fg: #1a1a1a;
 }
 
 body {
@@ -172,7 +177,8 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border: 1px solid #1a1a1a;
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--color-button-bg);
+  color: var(--color-button-fg);
   cursor: pointer;
   font-weight: 500;
   backdrop-filter: blur(4px);
@@ -186,16 +192,17 @@ body {
   background: #fff;
 }
 
-.overlay-btn.active {
-  background: #1a1a1a;
-  color: #fff;
+.overlay-btn.active,
+.overlay-btn.is-active {
+  background: var(--color-active-bg);
+  color: var(--color-active-fg);
 }
 
 /* Toggle switch for 2D/3D */
 .toggle-switch {
   display: flex;
   border: 1px solid #1a1a1a;
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--color-button-bg);
   backdrop-filter: blur(4px);
   border-radius: 0;
   overflow: hidden;
@@ -208,7 +215,7 @@ body {
   letter-spacing: 0.5px;
   border: none;
   background: transparent;
-  color: #1a1a1a;
+  color: var(--color-button-fg);
   cursor: pointer;
   font-weight: 500;
   transition: all 0.15s ease;
@@ -224,8 +231,8 @@ body {
 }
 
 .toggle-btn.active {
-  background: #1a1a1a;
-  color: #fff;
+  background: var(--color-active-bg);
+  color: var(--color-active-fg);
 }
 
 /* Right sidebar */
@@ -468,6 +475,11 @@ body {
 .playback-controls {
   display: flex;
   gap: 6px;
+  width: 100%;
+}
+
+.playback-controls .btn {
+  flex: 1;
 }
 
 .btn {
@@ -476,7 +488,8 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border: 1px solid #1a1a1a;
-  background: #fff;
+  background: var(--color-button-bg);
+  color: var(--color-button-fg);
   cursor: pointer;
   font-weight: 500;
   transition: all 0.15s ease;
@@ -499,6 +512,23 @@ body {
 
 .btn-primary:hover {
   background: #333;
+}
+
+/* Unified active helper for buttons */
+.btn.is-active {
+  background: var(--color-active-bg);
+  color: var(--color-active-fg);
+}
+
+/* Global focus/outline reset to prevent black borders on focus */
+*:focus,
+*:focus-visible,
+button:focus,
+input:focus,
+textarea:focus,
+canvas:focus {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 /* Flight Strip */

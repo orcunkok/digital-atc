@@ -276,6 +276,10 @@ export function createSim({
   }
 
   return {
+    get isRunning() {
+      return isRunning;
+    },
+
     start() {
       if (isRunning) return;
       isRunning = true;

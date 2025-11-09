@@ -55,6 +55,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { createAircraftLayer } from './MapboxThree';
 import { createSim } from './sim';
+import { simState } from '../composables/useSimState';
 
 const mapContainer = ref(null);
 const isFollowing = ref(true);
@@ -237,6 +238,7 @@ onMounted(() => {
     const SHADOW_ELEVATION = 0.1;
     const MPS_TO_KT = 1.944;
     const M_TO_FT = 3.28084;
+    const MPS_TO_FPM = 196.85; // meters per second to feet per minute
 
     // Create sim that works in local coordinates
     sim = createSim({
@@ -245,6 +247,27 @@ onMounted(() => {
       originAltitudeMeters, // Pass origin altitude for absolute target conversion
       onUpdate: (localState) => {
         const now = performance.now();
+
+        // Update shared sim state
+
+        // Calculate vertical speed from pitch
+        const pitchRad = (localState.pitchAngleDeg || 0) * (Math.PI / 180);
+        const verticalSpeedMps = localState.speedMps * Math.sin(pitchRad);
+        const verticalSpeedFpm = verticalSpeedMps * MPS_TO_FPM;
+
+        simState.value = {
+          ...simState.value,
+          altitudeFt: Math.round((originAltitudeMeters + localState.z) * M_TO_FT),
+          headingDeg: localState.headingDeg,
+          speedKt: Math.round(localState.speedMps * MPS_TO_KT),
+          vsFpm: Math.round(verticalSpeedFpm),
+        };
+
+        // Update targets from sim
+        const targets = sim.getTargets();
+        simState.value.targetHeadingDeg = targets.headingDeg;
+        simState.value.targetAltitudeFt = targets.altitudeFt;
+        simState.value.targetSpeedKt = targets.speedKt;
 
         // Always update Three.js aircraft position (critical for smooth rendering)
         aircraftLayer?.updatePosition?.(
@@ -411,10 +434,6 @@ onMounted(() => {
   });
 });
 
-function toggleFollow() {
-  isFollowing.value = !isFollowing.value;
-}
-
 function setHeading() {
   if (sim && headingInput.value !== null && headingInput.value !== '') {
     sim.setHeading(headingInput.value);
@@ -451,7 +470,26 @@ function setAll() {
 defineExpose({
   map,
   sim,
-  isFollowing,
+  get isFollowing() {
+    return isFollowing.value;
+  },
+  get isRunning() {
+    return sim ? sim.isRunning : false;
+  },
+  start() {
+    if (sim) sim.start();
+  },
+  pause() {
+    if (sim) sim.stop();
+  },
+  togglePause() {
+    if (!sim) return;
+    if (sim.isRunning) {
+      sim.stop();
+    } else {
+      sim.start();
+    }
+  },
   toggleFollow() {
     isFollowing.value = !isFollowing.value;
   },
@@ -470,6 +508,68 @@ defineExpose({
   },
   getPitch() {
     return map ? map.getPitch() : 0;
+  },
+  reset() {
+    if (!sim || !map) return;
+    
+    // Reset simulation
+    sim.reset();
+    
+    // Clear trail
+    const trailSrc = map.getSource('aircraft-trail');
+    if (trailSrc) {
+      trailSrc.setData({
+        type: 'Feature',
+        properties: { elevation: [] },
+        geometry: {
+          type: 'LineString',
+          coordinates: [],
+        },
+      });
+    }
+    
+    // Reset shadow to initial position
+    const shadowSrc = map.getSource('aircraft-shadow');
+    if (shadowSrc && localToLatLon) {
+      const headingRad = (initialHeadingDeg * Math.PI) / 180;
+      const TRIANGLE_LENGTH = 300;
+      const TRIANGLE_WIDTH = 200;
+      const TRIANGLE_BACK_RATIO = 0.3;
+      const SHADOW_ELEVATION = 0.1;
+      const sinH = Math.sin(headingRad);
+      const cosH = Math.cos(headingRad);
+      const backLength = TRIANGLE_LENGTH * TRIANGLE_BACK_RATIO;
+      const halfWidth = TRIANGLE_WIDTH / 2;
+      
+      const noseX = sinH * TRIANGLE_LENGTH;
+      const noseY = cosH * TRIANGLE_LENGTH;
+      const leftX = -sinH * backLength - cosH * halfWidth;
+      const leftY = -cosH * backLength + sinH * halfWidth;
+      const rightX = -sinH * backLength + cosH * halfWidth;
+      const rightY = -cosH * backLength - sinH * halfWidth;
+      
+      const [noseLng, noseLat] = localToLatLon(noseX, noseY, SHADOW_ELEVATION);
+      const [leftLng, leftLat] = localToLatLon(leftX, leftY, SHADOW_ELEVATION);
+      const [rightLng, rightLat] = localToLatLon(rightX, rightY, SHADOW_ELEVATION);
+      
+      shadowSrc.setData({
+        type: 'Feature',
+        properties: { heading: initialHeadingDeg, elevation: originAltitudeMeters + SHADOW_ELEVATION },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[noseLng, noseLat], [leftLng, leftLat], [rightLng, rightLat], [noseLng, noseLat]]],
+        },
+      });
+    }
+    
+    // Reset aircraft position in Three.js
+    aircraftLayer?.updatePosition?.(0, 0, 0, initialHeadingDeg, 0, 0);
+    
+    // Reset map camera to initial position
+    map.setCenter([originLon, originLat]);
+    
+    // Restart simulation
+    sim.start();
   },
 });
 
