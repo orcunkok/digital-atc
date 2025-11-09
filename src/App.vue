@@ -192,6 +192,14 @@
             <span>{{ simState.targetAltitudeFt ? formatAltitude(simState.targetAltitudeFt) + ' ft' : '—' }}</span>
           </div>
           <div class="intent-item">
+            <span class="intent-key">Target SPD</span>
+            <span>{{ simState.targetSpeedKt ? simState.targetSpeedKt + ' kt' : '—' }}</span>
+          </div>
+          <div class="intent-item">
+            <span class="intent-key">VS Limit</span>
+            <span>{{ simState.verticalSpeedLimitFpm ? simState.verticalSpeedLimitFpm + ' fpm' : '—' }}</span>
+          </div>
+          <div class="intent-item">
             <span class="intent-key">Special Action</span>
             <span>{{ simState.specialAction || '—' }}</span>
           </div>
@@ -332,24 +340,55 @@
         <div class="flight-strip-container">
           <div class="flight-strip">
             <div class="strip-field">
-              <div class="strip-label">Callsign</div>
-              <div class="strip-value strip-callsign">{{ simState.callsign }}</div>
+              <div class="strip-label">HDG</div>
+              <input
+                type="number"
+                v-model.number="headingInput"
+                min="0"
+                max="360"
+                placeholder="000"
+                @keyup.enter="setAll"
+                class="strip-input"
+              />
             </div>
             <div class="strip-field">
               <div class="strip-label">ALT</div>
-              <div class="strip-value">{{ formatAltitude(simState.altitudeFt) }}</div>
-            </div>
-            <div class="strip-field">
-              <div class="strip-label">HDG</div>
-              <div class="strip-value">{{ Math.round(simState.headingDeg) }}°</div>
+              <input
+                type="number"
+                v-model.number="altitudeInput"
+                min="-1000"
+                max="60000"
+                placeholder="10000"
+                @keyup.enter="setAll"
+                class="strip-input"
+              />
             </div>
             <div class="strip-field">
               <div class="strip-label">SPD</div>
-              <div class="strip-value">{{ Math.round(simState.speedKt) }}</div>
+              <input
+                type="number"
+                v-model.number="speedInput"
+                min="40"
+                max="400"
+                placeholder="120"
+                @keyup.enter="setAll"
+                class="strip-input"
+              />
             </div>
             <div class="strip-field">
-              <div class="strip-label">V/S</div>
-              <div class="strip-value">{{ formatVS(simState.vsFpm) }}</div>
+              <div class="strip-label">VS Limit</div>
+              <input
+                type="number"
+                v-model.number="verticalSpeedInput"
+                min="0"
+                max="4000"
+                placeholder="0"
+                @keyup.enter="setAll"
+                class="strip-input"
+              />
+            </div>
+            <div class="strip-field strip-button-field">
+              <button class="btn strip-set-btn" @click="setAll">Set</button>
             </div>
           </div>
         </div>
@@ -424,6 +463,12 @@ const atcInput = ref('');
 const currentEventIndex = ref(0);
 const timelineProgress = ref(35);
 
+// Flight strip control inputs
+const headingInput = ref(null);
+const altitudeInput = ref(null);
+const speedInput = ref(null);
+const verticalSpeedInput = ref(null);
+
 // Helper functions
 function formatAltitude(ft) {
   return ft.toLocaleString();
@@ -493,6 +538,25 @@ function setViewMode(mode) {
   is2D.value = mode === '2D';
   const pitch = is2D.value ? 0 : 70;
   mapRef.value?.setPitch?.(pitch);
+}
+
+// Flight strip control functions
+function setAll() {
+  const sim = mapRef.value?.sim;
+  if (!sim) return;
+  
+  if (headingInput.value !== null && headingInput.value !== '') {
+    sim.setHeading(headingInput.value);
+  }
+  if (altitudeInput.value !== null && altitudeInput.value !== '') {
+    sim.setAltitude(altitudeInput.value);
+  }
+  if (speedInput.value !== null && speedInput.value !== '') {
+    sim.setSpeed(speedInput.value);
+  }
+  if (verticalSpeedInput.value !== null && verticalSpeedInput.value !== '') {
+    sim.setVerticalSpeedLimit(verticalSpeedInput.value);
+  }
 }
 
 // Handle space key for pause/play toggle

@@ -17,7 +17,7 @@ export function createSim({
   const DEG_TO_RAD = Math.PI / 180;
   const KT_TO_MPS = 0.514444; // knots to meters per second
   const FT_TO_M = 0.3048; // feet to meters (1 ft = 0.3048 m)
-  const M_TO_FT = 3.28084; // meters to feet (1 m = 3.28084 ft)
+  const FPM_TO_MPS = 1 / 196.85; // feet per minute to meters per second
 
   // Helper functions
   const toRadians = (deg) => deg * DEG_TO_RAD;
@@ -67,6 +67,7 @@ export function createSim({
   let targetSpeedKt = null; // Target speed in knots
   let targetHeadingDeg = null; // Target heading in degrees
   let targetAltitudeFt = null; // Target altitude in feet (absolute, not relative)
+  let verticalSpeedLimitFpm = null; // Vertical speed limit in feet per minute (constrains climb/descent rate)
 
   let lastTimestamp = null;
   let animationFrameId = null;
@@ -161,7 +162,13 @@ export function createSim({
       
       if (Math.abs(altitudeDiff) > ALTITUDE_TOLERANCE_M) {
         // Calculate required vertical speed to reach target (P-gain of 0.1)
-        const desiredVerticalSpeedMps = Math.max(-maxDescentRateMps, Math.min(maxClimbRateMps, altitudeDiff * 0.1));
+        let desiredVerticalSpeedMps = Math.max(-maxDescentRateMps, Math.min(maxClimbRateMps, altitudeDiff * 0.1));
+        
+        // Apply vertical speed limit if set
+        if (verticalSpeedLimitFpm !== null) {
+          const limitMps = verticalSpeedLimitFpm * FPM_TO_MPS;
+          desiredVerticalSpeedMps = Math.max(-limitMps, Math.min(limitMps, desiredVerticalSpeedMps));
+        }
         
         // Convert vertical speed to pitch angle using maxPitchAngleDeg
         // pitch = asin(vertical_speed / speed)
@@ -177,6 +184,7 @@ export function createSim({
         z = targetAltitudeMeters;
         pitchInput = 0;
         targetPitchAngleDeg = 0;
+        targetAltitudeFt = null; // Clear target once reached
       }
     } else if (Math.abs(pitchInput) > 0.1) {
       // Calculate target pitch angle based on input
@@ -197,12 +205,20 @@ export function createSim({
     // Update altitude based on pitch angle
     // Vertical speed = speed * sin(pitch_angle)
     const pitchRad = toRadians(pitchAngleDeg);
-    let verticalSpeedMps = speedMps * Math.sin(pitchRad);
+    const sinPitch = Math.sin(pitchRad);
+    const cosPitch = Math.cos(pitchRad);
+    let verticalSpeedMps = speedMps * sinPitch;
     
     // Clamp vertical speed to max rates
     verticalSpeedMps = verticalSpeedMps > 0 
       ? Math.min(verticalSpeedMps, maxClimbRateMps)
       : Math.max(verticalSpeedMps, -maxDescentRateMps);
+    
+    // Apply vertical speed limit if set
+    if (verticalSpeedLimitFpm !== null) {
+      const limitMps = verticalSpeedLimitFpm * FPM_TO_MPS;
+      verticalSpeedMps = Math.max(-limitMps, Math.min(limitMps, verticalSpeedMps));
+    }
     
     z += verticalSpeedMps * deltaTime;
     // Prevent going too far below ground (safety limit)
@@ -212,7 +228,7 @@ export function createSim({
     // Move forward based on heading and speed
     // Horizontal component = speed * cos(pitch)
     const headingRad = toRadians(headingDeg);
-    const distance = speedMps * Math.cos(pitchRad) * deltaTime;
+    const distance = speedMps * cosPitch * deltaTime;
     x += Math.sin(headingRad) * distance; // east component
     y += Math.cos(headingRad) * distance; // north component
 
@@ -241,18 +257,23 @@ export function createSim({
       });
 
       // Remove points beyond maxTrailDistanceM (based on path distance)
-      // Cache newest distance to avoid repeated array access
+      // More efficient: find cutoff index instead of repeated shift() operations
       if (positionHistory.length > 1) {
-        const newestPoint = positionHistory[positionHistory.length - 1];
-        const newestDistance = newestPoint.cumulativeDistance;
+        const newestDistance = cumulativeDistance;
+        let cutoffIndex = 0;
         
-        // Remove points that are beyond the max trail distance
-        // Use a more efficient approach: find the cutoff index
-        while (positionHistory.length > 1) {
-          const oldestPoint = positionHistory[0];
-          const trailLength = newestDistance - oldestPoint.cumulativeDistance;
-          if (trailLength <= maxTrailDistanceM) break;
-          positionHistory.shift();
+        // Find first point that should be kept
+        for (let i = 0; i < positionHistory.length - 1; i++) {
+          const trailLength = newestDistance - positionHistory[i].cumulativeDistance;
+          if (trailLength <= maxTrailDistanceM) {
+            cutoffIndex = i;
+            break;
+          }
+        }
+        
+        // Remove old points in one operation
+        if (cutoffIndex > 0) {
+          positionHistory = positionHistory.slice(cutoffIndex);
         }
       }
 
@@ -321,6 +342,7 @@ export function createSim({
       targetSpeedKt = null;
       targetHeadingDeg = null;
       targetAltitudeFt = null;
+      verticalSpeedLimitFpm = null;
       positionHistory = [];
       lastUpdateTime = null;
       cumulativeDistance = 0;
@@ -341,7 +363,9 @@ export function createSim({
       }
       if (pitch !== undefined) {
         pitchInput = Math.max(-1, Math.min(1, pitch));
-        if (pitch !== 0) targetAltitudeFt = null; // Clear automation if manual control
+        if (pitch !== 0) {
+          targetAltitudeFt = null; // Clear automation if manual control
+        }
       }
     },
 
@@ -375,6 +399,17 @@ export function createSim({
       targetAltitudeFt = Math.max(-1000, Math.min(60000, targetAltitudeFeet));
     },
 
+    setVerticalSpeedLimit(limitFeetPerMinute) {
+      // Input: vertical speed limit in feet per minute (absolute value, constrains both climb and descent)
+      // Clamp to reasonable limits (0 to 4000 fpm)
+      if (limitFeetPerMinute === null || limitFeetPerMinute === '') {
+        verticalSpeedLimitFpm = null;
+      } else {
+        const absLimit = limitFeetPerMinute < 0 ? -limitFeetPerMinute : limitFeetPerMinute;
+        verticalSpeedLimitFpm = absLimit > 4000 ? 4000 : (absLimit < 0 ? 0 : absLimit);
+      }
+    },
+
     // Clear automation targets
     clearSpeed() {
       targetSpeedKt = null;
@@ -388,12 +423,17 @@ export function createSim({
       targetAltitudeFt = null;
     },
 
+    clearVerticalSpeedLimit() {
+      verticalSpeedLimitFpm = null;
+    },
+
     // Get current targets
     getTargets() {
       return {
         speedKt: targetSpeedKt,
         headingDeg: targetHeadingDeg,
         altitudeFt: targetAltitudeFt,
+        verticalSpeedLimitFpm: verticalSpeedLimitFpm,
       };
     },
   };

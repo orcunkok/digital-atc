@@ -11,6 +11,7 @@ export const simState = ref({
   targetHeadingDeg: null,
   targetAltitudeFt: null,
   targetSpeedKt: null,
+  verticalSpeedLimitFpm: null,
   specialAction: null,
 });
 

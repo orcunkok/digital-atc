@@ -3,48 +3,6 @@
     <button @click="toggleFollow" class="follow-btn" :class="{ active: isFollowing }">
       <SwitchCamera :size="20" />
     </button>
-    <div class="automation-controls">
-      <div class="control-group">
-        <label for="heading-input">Heading</label>
-        <input
-          id="heading-input"
-          v-model.number="headingInput"
-          type="number"
-          min="0"
-          max="360"
-          placeholder="000"
-          @keyup.enter="setAll"
-          class="control-input"
-        />
-      </div>
-      <div class="control-group">
-        <label for="altitude-input">Altitude</label>
-        <input
-          id="altitude-input"
-          v-model.number="altitudeInput"
-          type="number"
-          min="-1000"
-          max="60000"
-          placeholder="10000"
-          @keyup.enter="setAll"
-          class="control-input"
-        />
-      </div>
-      <div class="control-group">
-        <label for="speed-input">Speed</label>
-        <input
-          id="speed-input"
-          v-model.number="speedInputValue"
-          type="number"
-          min="40"
-          max="400"
-          placeholder="120"
-          @keyup.enter="setAll"
-          class="control-input"
-        />
-      </div>
-      <button @click="setAll" class="set-all-btn">Set</button>
-    </div>
   </div>
 </template>
 
@@ -59,12 +17,9 @@ import { simState } from '../composables/useSimState';
 
 const mapContainer = ref(null);
 const isFollowing = ref(true);
-const headingInput = ref(null);
-const altitudeInput = ref(null);
-const speedInputValue = ref(null);
 let map = null;
 let aircraftLayer = null;
-let sim = null;
+const sim = ref(null);
 let originMercator = null;
 let meterScale = null;
 let isTopDownView = false;
@@ -241,7 +196,7 @@ onMounted(() => {
     const MPS_TO_FPM = 196.85; // meters per second to feet per minute
 
     // Create sim that works in local coordinates
-    sim = createSim({
+    sim.value = createSim({
       initialHeadingDeg,
       initialAltitudeMeters: 0, // Relative to origin
       originAltitudeMeters, // Pass origin altitude for absolute target conversion
@@ -264,10 +219,11 @@ onMounted(() => {
         };
 
         // Update targets from sim
-        const targets = sim.getTargets();
+        const targets = sim.value.getTargets();
         simState.value.targetHeadingDeg = targets.headingDeg;
         simState.value.targetAltitudeFt = targets.altitudeFt;
         simState.value.targetSpeedKt = targets.speedKt;
+        simState.value.verticalSpeedLimitFpm = targets.verticalSpeedLimitFpm;
 
         // Always update Three.js aircraft position (critical for smooth rendering)
         aircraftLayer?.updatePosition?.(
@@ -340,7 +296,7 @@ onMounted(() => {
     });
 
     // Start simulation
-    sim.start();
+    sim.value.start();
 
     // Navigation controls removed - using custom controls in App.vue
 
@@ -402,7 +358,7 @@ onMounted(() => {
     }
 
     function updateControls() {
-      if (!sim) return;
+      if (!sim.value) return;
 
       // Speed control: ArrowUp = speed up, ArrowDown = slow down
       let speedInput = 0;
@@ -419,7 +375,7 @@ onMounted(() => {
       if (pressedKeys.has('w') || pressedKeys.has('W')) pitchInput = -1;
       if (pressedKeys.has('s') || pressedKeys.has('S')) pitchInput = 1;
 
-      sim.setControls({ speed: speedInput, turn: turnInput, pitch: pitchInput });
+      sim.value.setControls({ speed: speedInput, turn: turnInput, pitch: pitchInput });
     }
 
     // Add keyboard event listeners
@@ -434,68 +390,38 @@ onMounted(() => {
   });
 });
 
-function setHeading() {
-  if (sim && headingInput.value !== null && headingInput.value !== '') {
-    sim.setHeading(headingInput.value);
-  }
-}
-
-function setAltitude() {
-  if (sim && altitudeInput.value !== null && altitudeInput.value !== '') {
-    sim.setAltitude(altitudeInput.value);
-  }
-}
-
-function setSpeed() {
-  if (sim && speedInputValue.value !== null && speedInputValue.value !== '') {
-    sim.setSpeed(speedInputValue.value);
-  }
-}
-
-function setAll() {
-  if (sim) {
-    if (headingInput.value !== null && headingInput.value !== '') {
-      sim.setHeading(headingInput.value);
-    }
-    if (altitudeInput.value !== null && altitudeInput.value !== '') {
-      sim.setAltitude(altitudeInput.value);
-    }
-    if (speedInputValue.value !== null && speedInputValue.value !== '') {
-      sim.setSpeed(speedInputValue.value);
-    }
-  }
-}
-
 // Expose map and sim for external control
 defineExpose({
   map,
-  sim,
+  get sim() {
+    return sim.value;
+  },
   get isFollowing() {
     return isFollowing.value;
   },
   get isRunning() {
-    return sim ? sim.isRunning : false;
+    return sim.value ? sim.value.isRunning : false;
   },
   start() {
-    if (sim) sim.start();
+    if (sim.value) sim.value.start();
   },
   pause() {
-    if (sim) sim.stop();
+    if (sim.value) sim.value.stop();
   },
   togglePause() {
-    if (!sim) return;
-    if (sim.isRunning) {
-      sim.stop();
+    if (!sim.value) return;
+    if (sim.value.isRunning) {
+      sim.value.stop();
     } else {
-      sim.start();
+      sim.value.start();
     }
   },
   toggleFollow() {
     isFollowing.value = !isFollowing.value;
   },
   centerOnAircraft() {
-    if (sim && map) {
-      const state = sim.getState();
+    if (sim.value && map) {
+      const state = sim.value.getState();
       const [lng, lat] = localToLatLon(state.x, state.y, state.z);
       map.setCenter([lng, lat]);
       isFollowing.value = false;
@@ -510,10 +436,10 @@ defineExpose({
     return map ? map.getPitch() : 0;
   },
   reset() {
-    if (!sim || !map) return;
+    if (!sim.value || !map) return;
     
     // Reset simulation
-    sim.reset();
+    sim.value.reset();
     
     // Clear trail
     const trailSrc = map.getSource('aircraft-trail');
@@ -569,7 +495,7 @@ defineExpose({
     map.setCenter([originLon, originLat]);
     
     // Restart simulation
-    sim.start();
+    sim.value.start();
   },
 });
 
@@ -585,8 +511,8 @@ onUnmounted(() => {
     cleanupMapEvents();
   }
 
-  if (sim) {
-    sim.stop();
+  if (sim.value) {
+    sim.value.stop();
   }
   if (map) {
     map.remove();
@@ -634,100 +560,6 @@ onUnmounted(() => {
 
 .follow-btn svg {
   color: #000;
-}
-
-.automation-controls {
-  position: absolute;
-  bottom: 20px;
-  left: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  z-index: 1000;
-  background: rgba(255, 255, 255, 0.95);
-  padding: 12px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  min-width: 180px;
-}
-
-.control-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.control-group label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #333;
-  min-width: 60px;
-  text-align: right;
-}
-
-.control-input {
-  flex: 1;
-  padding: 6px 8px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 13px;
-  width: 70px;
-  appearance: textfield;
-  -moz-appearance: textfield;
-}
-
-.control-input:focus {
-  outline: none;
-  border-color: #4caf50;
-}
-
-/* Hide spinner buttons in number inputs */
-.control-input::-webkit-inner-spin-button,
-.control-input::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.control-btn {
-  padding: 6px 12px;
-  background: #4caf50;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.control-btn:hover {
-  background: #45a049;
-}
-
-.control-btn:active {
-  background: #3d8b40;
-}
-
-.set-all-btn {
-  margin-top: 8px;
-  padding: 8px 16px;
-  background: #4caf50;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-  width: 100%;
-}
-
-.set-all-btn:hover {
-  background: #45a049;
-}
-
-.set-all-btn:active {
-  background: #3d8b40;
 }
 
 /* Hide Mapbox logo and attribution */

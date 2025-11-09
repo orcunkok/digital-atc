@@ -596,7 +596,7 @@ body {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 16px;
-  align-items: center;
+  align-items: end;
   height: 100%;
 }
 
@@ -622,6 +622,58 @@ body {
 
 .strip-callsign {
   font-size: 20px;
+}
+
+.strip-input {
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.strip-input:focus {
+  outline: none;
+  border-color: var(--color-text);
+  background: var(--color-bg-panel);
+}
+
+.strip-input::-webkit-inner-spin-button,
+.strip-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.strip-button-field {
+  display: flex;
+  align-items: flex-end;
+}
+
+.strip-set-btn {
+  width: 100%;
+  padding: 8px 16px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid var(--color-text);
+  background: var(--color-button-bg);
+  color: var(--color-button-fg);
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.strip-set-btn:hover {
+  background: var(--color-active-bg);
+  color: var(--color-active-fg);
+}
+
+.strip-set-btn:active {
+  transform: translateY(1px);
 }
 
 .quick-actions-grid {
