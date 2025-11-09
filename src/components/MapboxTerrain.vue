@@ -68,6 +68,7 @@ let originMercator = null;
 let meterScale = null;
 let isTopDownView = false;
 let cleanupMapEvents = null;
+let localToLatLon = null;
 
 // Aircraft origin from KOAK_IFR_vectors_goaround scenario (lat/lon)
 const originLat = 37.70;
@@ -201,56 +202,8 @@ onMounted(() => {
       },
     });
 
-    // Create GeoJSON source for aircraft label
-    map.addSource('aircraft-label', {
-      type: 'geojson',
-      data: {
-        type: 'Feature',
-        properties: {
-          heading: 0,
-          speed: 0,
-          altitude: 0,
-          elevation: originAltitudeMeters,
-        },
-        geometry: {
-          type: 'Point',
-          coordinates: [originLon, originLat],
-        },
-      },
-    });
-
-    // Add symbol layer for aircraft label with formatted text
-    map.addLayer({
-      id: 'aircraft-label-layer',
-      type: 'symbol',
-      source: 'aircraft-label',
-      layout: {
-        'text-field': [
-          'format',
-          ['get', 'heading'],
-          { 'font-scale': 1.0 },
-          '°|',
-          {},
-          ['get', 'speed'],
-          { 'font-scale': 1.0 },
-          'kt|',
-          {},
-          ['get', 'altitude'],
-          { 'font-scale': 1.0 },
-          'ft',
-        ],
-        'text-size': 14,
-        'text-anchor': 'center',
-        'text-allow-overlap': true,
-        'text-ignore-placement': true,
-      },
-      paint: {
-        'text-color': '#000000'
-      },
-    });
-
     // Helper function to convert local coordinates to lat/lon
-    function localToLatLon(localX, localY, localZ) {
+    localToLatLon = (localX, localY, localZ) => {
       const mercatorX = originMercator.x + localX * meterScale;
       const mercatorY = originMercator.y + localY * meterScale;
       const mercatorZ = originMercator.z + localZ * meterScale;
@@ -261,7 +214,7 @@ onMounted(() => {
       );
       const lngLat = mercatorCoord.toLngLat();
       return [lngLat.lng, lngLat.lat];
-    }
+    };
 
     // Helper function for degree-to-radian conversion
     const DEG_TO_RAD = Math.PI / 180;
@@ -269,21 +222,15 @@ onMounted(() => {
 
     // Performance optimization: throttle updates for expensive operations
     let lastTrailUpdate = 0;
-    let lastLabelUpdate = 0;
     let lastShadowUpdate = 0;
     const TRAIL_UPDATE_INTERVAL = 100; // Update trail every 100ms
-    const LABEL_UPDATE_INTERVAL = 200; // Update label every 200ms
     const SHADOW_UPDATE_INTERVAL = 100; // Update shadow every 100ms
 
     // Cache sources to avoid repeated lookups
     let trailSource = null;
-    let labelSource = null;
     let shadowSource = null;
 
-    // Constants for label and shadow calculations
-    const LABEL_ALTITUDE_OFFSET = 50;
-    const LABEL_X_OFFSET = 400;
-    const LABEL_Y_OFFSET = 200;
+    // Constants for shadow calculations
     const TRIANGLE_LENGTH = 300;
     const TRIANGLE_WIDTH = 200;
     const TRIANGLE_BACK_RATIO = 0.3;
@@ -335,32 +282,6 @@ onMounted(() => {
           });
         }
 
-        // Throttle label updates
-        if (now - lastLabelUpdate >= LABEL_UPDATE_INTERVAL) {
-          lastLabelUpdate = now;
-          if (!labelSource) labelSource = map.getSource('aircraft-label');
-
-          const speedKt = Math.round(localState.speedMps * MPS_TO_KT);
-          const altitudeFt = Math.round((originAltitudeMeters + localState.z) * M_TO_FT);
-          const headingDeg = Math.round(localState.headingDeg);
-          const [labelLng, labelLat] = localToLatLon(
-            localState.x + LABEL_X_OFFSET,
-            localState.y - LABEL_Y_OFFSET,
-            0
-          );
-
-          labelSource?.setData({
-            type: 'Feature',
-            properties: {
-              heading: headingDeg,
-              speed: speedKt,
-              altitude: altitudeFt,
-              elevation: originAltitudeMeters + localState.z + LABEL_ALTITUDE_OFFSET,
-            },
-            geometry: { type: 'Point', coordinates: [labelLng, labelLat] },
-          });
-        }
-
         // Throttle shadow updates
         if (now - lastShadowUpdate >= SHADOW_UPDATE_INTERVAL) {
           lastShadowUpdate = now;
@@ -398,14 +319,7 @@ onMounted(() => {
     // Start simulation
     sim.start();
 
-    // Add navigation controls (visualizePitch enables 2D/3D toggle)
-    map.addControl(
-      new mapboxgl.NavigationControl({
-        visualizePitch: true,
-        showCompass: true,
-        showZoom: true,
-      })
-    );
+    // Navigation controls removed - using custom controls in App.vue
 
     // Track camera pitch to detect top-down view
     function updateTopDownState() {
@@ -533,6 +447,32 @@ function setAll() {
   }
 }
 
+// Expose map and sim for external control
+defineExpose({
+  map,
+  sim,
+  isFollowing,
+  toggleFollow() {
+    isFollowing.value = !isFollowing.value;
+  },
+  centerOnAircraft() {
+    if (sim && map) {
+      const state = sim.getState();
+      const [lng, lat] = localToLatLon(state.x, state.y, state.z);
+      map.setCenter([lng, lat]);
+      isFollowing.value = false;
+    }
+  },
+  setPitch(pitch) {
+    if (map) {
+      map.easeTo({ pitch });
+    }
+  },
+  getPitch() {
+    return map ? map.getPitch() : 0;
+  },
+});
+
 onUnmounted(() => {
   // Clean up keyboard controls
   if (window._cleanupKeyboardControls) {
@@ -554,7 +494,6 @@ onUnmounted(() => {
   
   // Clear cached sources
   trailSource = null;
-  labelSource = null;
   shadowSource = null;
 });
 </script>

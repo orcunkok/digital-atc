@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Digital ATC</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      background: #f5f5f0;
+      color: #1a1a1a;
+      overflow: hidden;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 240px 2fr 320px;
+      grid-template-rows: 48px 1fr 180px;
+      height: 100vh;
+      gap: 1px;
+      background: #d0d0c8;
+    }
+
+    /* Header */
+    .header {
+      grid-column: 1 / -1;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      border-bottom: 1px solid #d0d0c8;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .logo {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4a4;
+    }
+
+    .header-right {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #666;
+    }
+
+    /* Left sidebar */
+    .sidebar-left {
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #d0d0c8;
+      overflow-y: auto;
+    }
+
+    .sidebar-section {
+      border-bottom: 1px solid #d0d0c8;
+    }
+
+    .section-header {
+      padding: 12px 16px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      font-weight: 600;
+      background: #fafaf8;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .section-header:hover {
+      background: #f5f5f0;
+    }
+
+    .section-content {
+      padding: 12px 16px;
+    }
+
+    .layer-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .layer-item:hover {
+      opacity: 0.7;
+    }
+
+    .checkbox {
+      width: 14px;
+      height: 14px;
+      border: 1px solid #1a1a1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+    }
+
+    .checkbox.checked::after {
+      content: '×';
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    .tool-btn {
+      width: 100%;
+      padding: 8px 12px;
+      font-size: 11px;
+      text-align: left;
+      border: none;
+      background: #fff;
+      cursor: pointer;
+      border-bottom: 1px solid #f5f5f0;
+      font-weight: 500;
+    }
+
+    .tool-btn:hover {
+      background: #fafaf8;
+    }
+
+    .tool-btn.active {
+      background: #1a1a1a;
+      color: #fff;
+    }
+
+    /* Map */
+    .map {
+      background: #e8e8e0;
+      position: relative;
+    }
+
+    .map-placeholder {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 11px;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .map-overlay {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .overlay-btn {
+      padding: 8px 12px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border: 1px solid #1a1a1a;
+      background: rgba(255, 255, 255, 0.95);
+      cursor: pointer;
+      font-weight: 500;
+      backdrop-filter: blur(4px);
+    }
+
+    .overlay-btn:hover {
+      background: #fff;
+    }
+
+    /* Right sidebar */
+    .sidebar-right {
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid #d0d0c8;
+    }
+
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid #d0d0c8;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 12px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      text-align: center;
+      cursor: pointer;
+      background: #fafaf8;
+      border-right: 1px solid #d0d0c8;
+    }
+
+    .tab:last-child {
+      border-right: none;
+    }
+
+    .tab:hover {
+      background: #f5f5f0;
+    }
+
+    .tab.active {
+      background: #fff;
+      font-weight: 600;
+    }
+
+    .tab-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* State display */
+    .state-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .state-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .state-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #999;
+    }
+
+    .state-value {
+      font-size: 18px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .state-subsection {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid #f5f5f0;
+    }
+
+    .subsection-title {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    .intent-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      font-size: 11px;
+    }
+
+    .intent-key {
+      color: #666;
+    }
+
+    /* Timeline in state tab */
+    .timeline-widget {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid #f5f5f0;
+    }
+
+    .timeline-bar {
+      width: 100%;
+      height: 6px;
+      background: #f5f5f0;
+      position: relative;
+      border-radius: 3px;
+      margin: 8px 0;
+    }
+
+    .timeline-progress {
+      height: 100%;
+      background: #1a1a1a;
+      width: 35%;
+      border-radius: 3px;
+    }
+
+    .timeline-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #999;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Transcript */
+    .log-entry {
+      margin-bottom: 12px;
+      display: flex;
+      gap: 8px;
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    .log-time {
+      color: #999;
+      font-size: 10px;
+      min-width: 40px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .log-speaker {
+      font-weight: 600;
+      min-width: 48px;
+    }
+
+    .log-speaker.atc {
+      color: #1a5fb4;
+    }
+
+    .log-speaker.pilot {
+      color: #26a269;
+    }
+
+    .log-text {
+      flex: 1;
+    }
+
+    /* Flight plan */
+    .flight-plan-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      font-size: 11px;
+      border-bottom: 1px solid #f5f5f0;
+    }
+
+    .flight-plan-item:last-child {
+      border-bottom: none;
+    }
+
+    .waypoint-name {
+      font-weight: 600;
+    }
+
+    .waypoint-alt {
+      color: #666;
+      font-size: 10px;
+    }
+
+    /* Bottom control strip - NEW DESIGN */
+    .control-strip {
+      grid-column: 1 / -1;
+      background: #fff;
+      display: grid;
+      grid-template-rows: 90px 90px;
+      border-top: 1px solid #d0d0c8;
+    }
+
+    /* Top row - Scenario + Flight Strip */
+    .control-row-top {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 1px;
+      background: #d0d0c8;
+      border-bottom: 1px solid #d0d0c8;
+    }
+
+    .scenario-control {
+      background: #fff;
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .scenario-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .scenario-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #999;
+      font-weight: 600;
+    }
+
+    .scenario-select {
+      font-size: 11px;
+      padding: 6px 12px;
+      border: 1px solid #d0d0c8;
+      background: #fff;
+      font-family: inherit;
+      flex: 1;
+      margin-left: 12px;
+    }
+
+    .playback-controls {
+      display: flex;
+      gap: 6px;
+    }
+
+    .btn {
+      padding: 8px 16px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border: 1px solid #1a1a1a;
+      background: #fff;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+
+    .btn:hover {
+      background: #1a1a1a;
+      color: #fff;
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .btn-primary {
+      background: #1a1a1a;
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: #333;
+    }
+
+    /* Flight Strip */
+    .flight-strip {
+      background: #fafaf8;
+      padding: 16px 20px;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 16px;
+      align-items: center;
+    }
+
+    .strip-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .strip-label {
+      font-size: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #999;
+      font-weight: 600;
+    }
+
+    .strip-value {
+      font-size: 16px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .strip-callsign {
+      font-size: 20px;
+    }
+
+    /* Bottom row - ATC Console */
+    .control-row-bottom {
+      display: grid;
+      grid-template-columns: 320px 1fr 280px;
+      gap: 1px;
+      background: #d0d0c8;
+    }
+
+    .quick-actions {
+      background: #fff;
+      padding: 12px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .quick-actions-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #999;
+      font-weight: 600;
+    }
+
+    .quick-actions-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .quick-btn {
+      padding: 6px 10px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      border: 1px solid #d0d0c8;
+      background: #fafaf8;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.15s ease;
+      font-family: inherit;
+      text-align: center;
+    }
+
+    .quick-btn:hover {
+      background: #fff;
+      border-color: #1a1a1a;
+    }
+
+    .atc-console {
+      background: #fff;
+      padding: 12px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .atc-console-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #999;
+      font-weight: 600;
+    }
+
+    .atc-input-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .atc-input {
+      flex: 1;
+      padding: 10px 12px;
+      font-size: 12px;
+      border: 1px solid #d0d0c8;
+      background: #fafaf8;
+      font-family: inherit;
+    }
+
+    .atc-input:focus {
+      outline: none;
+      border-color: #1a1a1a;
+      background: #fff;
+    }
+
+    /* Event Queue Preview */
+    .event-queue {
+      background: #fafaf8;
+      padding: 12px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .event-queue-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #999;
+      font-weight: 600;
+    }
+
+    .event-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 10px;
+    }
+
+    .event-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+
+    .event-time {
+      color: #999;
+      font-variant-numeric: tabular-nums;
+      min-width: 40px;
+    }
+
+    .event-desc {
+      flex: 1;
+      color: #666;
+    }
+
+    .event-item.active {
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+
+    .event-item.active .event-time {
+      color: #1a1a1a;
+    }
+
+    /* Scrollbar */
+    .tab-content::-webkit-scrollbar,
+    .section-content::-webkit-scrollbar,
+    .sidebar-left::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .tab-content::-webkit-scrollbar-track,
+    .section-content::-webkit-scrollbar-track,
+    .sidebar-left::-webkit-scrollbar-track {
+      background: #f5f5f0;
+    }
+
+    .tab-content::-webkit-scrollbar-thumb,
+    .section-content::-webkit-scrollbar-thumb,
+    .sidebar-left::-webkit-scrollbar-thumb {
+      background: #d0d0c8;
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">Digital ATC</div>
+        <div class="status-indicator"></div>
+      </div>
+      <div class="header-right">
+        <span>N123AB</span>
+        <span>·</span>
+        <span>KOAK → SF Bay</span>
+        <span>·</span>
+        <span>Phase: Enroute</span>
+      </div>
+    </header>
+
+    <!-- Left sidebar -->
+    <aside class="sidebar-left">
+      <div class="sidebar-section">
+        <div class="section-header">Layers</div>
+        <div class="section-content">
+          <div class="layer-item">
+            <div class="checkbox checked"></div>
+            <span>Aircraft trail</span>
+          </div>
+          <div class="layer-item">
+            <div class="checkbox checked"></div>
+            <span>Flight plan</span>
+          </div>
+          <div class="layer-item">
+            <div class="checkbox checked"></div>
+            <span>TFR / No-go</span>
+          </div>
+          <div class="layer-item">
+            <div class="checkbox checked"></div>
+            <span>Traffic</span>
+          </div>
+          <div class="layer-item">
+            <div class="checkbox"></div>
+            <span>Airspace</span>
+          </div>
+          <div class="layer-item">
+            <div class="checkbox"></div>
+            <span>Navaids</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-header">Chart Overlays</div>
+        <div class="section-content">
+          <button class="tool-btn active">None</button>
+          <button class="tool-btn">SFO TAC</button>
+          <button class="tool-btn">KOAK Departure</button>
+          <button class="tool-btn">KOAK Arrival</button>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-header">Tools</div>
+        <div class="section-content">
+          <button class="tool-btn">Add waypoint</button>
+          <button class="tool-btn">Draw TFR</button>
+          <button class="tool-btn">Measure distance</button>
+          <button class="tool-btn">Export transcript</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Map -->
+    <div class="map">
+      <div class="map-placeholder">Mapbox GL JS</div>
+      <div class="map-overlay">
+        <button class="overlay-btn">Center</button>
+        <button class="overlay-btn">Follow</button>
+      </div>
+    </div>
+
+    <!-- Right sidebar -->
+    <aside class="sidebar-right">
+      <div class="tabs">
+        <div class="tab active">State</div>
+        <div class="tab">Transcript</div>
+        <div class="tab">Plan</div>
+      </div>
+
+      <!-- State tab -->
+      <div class="tab-content active">
+        <div class="state-grid">
+          <div class="state-item">
+            <div class="state-label">Altitude</div>
+            <div class="state-value">1,500</div>
+          </div>
+          <div class="state-item">
+            <div class="state-label">Heading</div>
+            <div class="state-value">330°</div>
+          </div>
+          <div class="state-item">
+            <div class="state-label">Speed</div>
+            <div class="state-value">110</div>
+          </div>
+          <div class="state-item">
+            <div class="state-label">V/S</div>
+            <div class="state-value">0</div>
+          </div>
+        </div>
+
+        <div class="state-subsection">
+          <div class="subsection-title">Current Intent</div>
+          <div class="intent-item">
+            <span class="intent-key">Target HDG</span>
+            <span>330°</span>
+          </div>
+          <div class="intent-item">
+            <span class="intent-key">Target ALT</span>
+            <span>1,500 ft</span>
+          </div>
+          <div class="intent-item">
+            <span class="intent-key">Special Action</span>
+            <span>—</span>
+          </div>
+        </div>
+
+        <div class="state-subsection">
+          <div class="subsection-title">Clearance</div>
+          <div style="font-size: 11px; line-height: 1.6; color: #666;">
+            Proceed northbound along the shoreline at 1,500. Remain west of TFR.
+          </div>
+        </div>
+
+        <div class="state-subsection">
+          <div class="subsection-title">Conflicts</div>
+          <div style="font-size: 11px; color: #e01b24;">
+            TFR projected 2.1 NM ahead
+          </div>
+        </div>
+
+        <div class="timeline-widget">
+          <div class="subsection-title">Timeline</div>
+          <div class="timeline-bar">
+            <div class="timeline-progress"></div>
+          </div>
+          <div class="timeline-labels">
+            <span>00:35</span>
+            <span>02:30</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transcript tab -->
+      <div class="tab-content">
+        <div class="log-entry">
+          <div class="log-time">00:05</div>
+          <div class="log-speaker atc">ATC</div>
+          <div class="log-text">N123AB, NorCal Approach, radar contact, proceed northbound along the shoreline at 1,500.</div>
+        </div>
+        <div class="log-entry">
+          <div class="log-time">00:07</div>
+          <div class="log-speaker pilot">PILOT</div>
+          <div class="log-text">NorCal, November One Two Three Alfa Bravo, shoreline northbound at one thousand five hundred.</div>
+        </div>
+        <div class="log-entry">
+          <div class="log-time">00:28</div>
+          <div class="log-speaker atc">ATC</div>
+          <div class="log-text">N123AB, be advised TFR ahead, remain west of the TFR.</div>
+        </div>
+        <div class="log-entry">
+          <div class="log-time">00:30</div>
+          <div class="log-speaker pilot">PILOT</div>
+          <div class="log-text">November One Two Three Alfa Bravo, will remain west of the TFR.</div>
+        </div>
+      </div>
+
+      <!-- Flight Plan tab -->
+      <div class="tab-content">
+        <div class="flight-plan-item">
+          <div>
+            <div class="waypoint-name">KOAK</div>
+            <div class="waypoint-alt">Departure</div>
+          </div>
+          <div style="font-size: 10px; color: #999;">00:00</div>
+        </div>
+        <div class="flight-plan-item">
+          <div>
+            <div class="waypoint-name">Oakland Shoreline</div>
+            <div class="waypoint-alt">1,500 ft</div>
+          </div>
+          <div style="font-size: 10px; color: #999;">00:03</div>
+        </div>
+        <div class="flight-plan-item">
+          <div>
+            <div class="waypoint-name">ALCTZ</div>
+            <div class="waypoint-alt">1,500 ft</div>
+          </div>
+          <div style="font-size: 10px; color: #999;">00:45</div>
+        </div>
+        <div class="flight-plan-item">
+          <div>
+            <div class="waypoint-name">Golden Gate</div>
+            <div class="waypoint-alt">1,500 ft</div>
+          </div>
+          <div style="font-size: 10px; color: #999;">01:10</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Bottom control strip - REDESIGNED -->
+    <div class="control-strip">
+      <!-- Top row: Scenario + Flight Strip -->
+      <div class="control-row-top">
+        <div class="scenario-control">
+          <div class="scenario-header">
+            <span class="scenario-label">Scenario</span>
+            <select class="scenario-select">
+              <option>A: SF VFR + TFR</option>
+              <option>B: KOAK IFR Go-Around</option>
+            </select>
+          </div>
+          <div class="playback-controls">
+            <button class="btn btn-primary">Start</button>
+            <button class="btn">Pause</button>
+            <button class="btn">Step</button>
+            <button class="btn">Reset</button>
+          </div>
+        </div>
+
+        <div class="flight-strip">
+          <div class="strip-field">
+            <div class="strip-label">Callsign</div>
+            <div class="strip-value strip-callsign">N123AB</div>
+          </div>
+          <div class="strip-field">
+            <div class="strip-label">ALT</div>
+            <div class="strip-value">1,500</div>
+          </div>
+          <div class="strip-field">
+            <div class="strip-label">HDG</div>
+            <div class="strip-value">330°</div>
+          </div>
+          <div class="strip-field">
+            <div class="strip-label">SPD</div>
+            <div class="strip-value">110</div>
+          </div>
+          <div class="strip-field">
+            <div class="strip-label">V/S</div>
+            <div class="strip-value">0</div>
+          </div>
+          <div class="strip-field">
+            <div class="strip-label">Phase</div>
+            <div class="strip-value" style="font-size: 11px; text-transform: uppercase;">Enroute</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom row: Quick Actions + ATC Console + Event Queue -->
+      <div class="control-row-bottom">
+        <div class="quick-actions">
+          <div class="quick-actions-label">Quick Commands</div>
+          <div class="quick-actions-grid">
+            <button class="quick-btn">Climb 2000</button>
+            <button class="quick-btn">Descend 1000</button>
+            <button class="quick-btn">Turn L 270</button>
+            <button class="quick-btn">Turn R 360</button>
+            <button class="quick-btn">Direct ALCTZ</button>
+            <button class="quick-btn">Go Around</button>
+          </div>
+        </div>
+
+        <div class="atc-console">
+          <div class="atc-console-label">ATC Input</div>
+          <div class="atc-input-row">
+            <input 
+              type="text" 
+              class="atc-input" 
+              placeholder="Type ATC instruction or use quick commands..."
+            >
+            <button class="btn">Send</button>
+          </div>
+        </div>
+
+        <div class="event-queue">
+          <div class="event-queue-label">Upcoming Events</div>
+          <div class="event-list">
+            <div class="event-item active">
+              <span class="event-time">00:35</span>
+              <span class="event-desc">Current position</span>
+            </div>
+            <div class="event-item">
+              <span class="event-time">00:45</span>
+              <span class="event-desc">Add traffic 2 o'clock</span>
+            </div>
+            <div class="event-item">
+              <span class="event-time">00:48</span>
+              <span class="event-desc">ATC: Traffic advisory</span>
+            </div>
+            <div class="event-item">
+              <span class="event-time">01:20</span>
+              <span class="event-desc">ATC: Handoff NorCal</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Tab switching
+    const tabs = document.querySelectorAll('.tab');
+    const tabContents = document.querySelectorAll('.tab-content');
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        tabContents.forEach(tc => tc.classList.remove('active'));
+        tab.classList.add('active');
+        tabContents[index].classList.add('active');
+      });
+    });
+
+    // Layer toggle
+    const layerItems = document.querySelectorAll('.layer-item');
+    layerItems.forEach(item => {
+      item.addEventListener('click', () => {
+        const checkbox = item.querySelector('.checkbox');
+        checkbox.classList.toggle('checked');
+      });
+    });
+
+    // Tool buttons
+    document.querySelectorAll('.sidebar-section').forEach(section => {
+      const buttons = section.querySelectorAll('.tool-btn');
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          buttons.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        });
+      });
+    });
+
+    // Quick command buttons
+    const quickBtns = document.querySelectorAll('.quick-btn');
+    const atcInput = document.querySelector('.atc-input');
+    quickBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cmd = btn.textContent;
+        const callsign = 'N123AB';
+        let instruction = '';
+        
+        if (cmd.includes('Climb')) instruction = `${callsign}, climb and maintain 2,000.`;
+        else if (cmd.includes('Descend')) instruction = `${callsign}, descend and maintain 1,000.`;
+        else if (cmd.includes('Turn L')) instruction = `${callsign}, turn left heading 270.`;
+        else if (cmd.includes('Turn R')) instruction = `${callsign}, turn right heading 360.`;
+        else if (cmd.includes('Direct')) instruction = `${callsign}, proceed direct ALCTZ.`;
+        else if (cmd.includes('Go Around')) instruction = `${callsign}, go around, runway heading, climb to 2,000.`;
+        
+        atcInput.value = instruction;
+      });
+    });
+  </script>
+</body>
+</html>
