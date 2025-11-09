@@ -115,11 +115,12 @@
           <Lock :size="14" />
           Follow
         </button>
-        <div class="toggle-switch">
+        <div class="toggle-switch" :class="{ disabled: isFollowing }">
           <button
             class="toggle-btn"
             :class="{ active: is2D }"
             @click="setViewMode('2D')"
+            :disabled="isFollowing"
           >
             2D
           </button>
@@ -127,6 +128,7 @@
             class="toggle-btn"
             :class="{ active: !is2D }"
             @click="setViewMode('3D')"
+            :disabled="isFollowing"
           >
             3D
           </button>
@@ -387,9 +389,7 @@
                 class="strip-input"
               />
             </div>
-            <div class="strip-field strip-button-field">
-              <button class="btn strip-set-btn" @click="setAll">Set</button>
-            </div>
+            <button class="btn strip-set-btn" @click="setAll">Set</button>
           </div>
         </div>
 
@@ -412,7 +412,7 @@
       </div>
 
       <div class="event-queue">
-        <div class="event-queue-label">Upcoming Events</div>
+        <div class="event-queue-label">Upcoming Simulated Events</div>
         <div class="event-list">
           <div class="event-item" :class="{ active: currentEventIndex === 0 }">
             <span class="event-time">00:35</span>
@@ -446,7 +446,7 @@ const { simState } = useSimState();
 const mapRef = ref(null);
 const isFollowing = ref(true);
 const is2D = ref(false);
-const isPaused = ref(false);
+const isPaused = ref(false); // Will sync with actual sim state on mount
 
 // UI state
 const activeTab = ref('state');
@@ -511,7 +511,10 @@ function sendATC() {
 
 function toggleFollow() {
   mapRef.value?.toggleFollow?.();
-  isFollowing.value = mapRef.value?.isFollowing;
+  // isFollowing is updated internally by toggleFollow, sync after a brief delay
+  setTimeout(() => {
+    isFollowing.value = mapRef.value?.isFollowing ?? isFollowing.value;
+  }, 0);
 }
 
 function toggleCenter() {
@@ -564,14 +567,15 @@ function handleKeyPress(event) {
   if (event.code === 'Space' && event.target.tagName !== 'INPUT' && event.target.tagName !== 'TEXTAREA') {
     event.preventDefault();
     mapRef.value?.togglePause?.();
-    // Sync paused state from sim
-    const running = mapRef.value?.isRunning;
-    if (typeof running === 'boolean') {
-      isPaused.value = !running;
-    } else {
-      // Fallback toggle if not immediately available
-      isPaused.value = !isPaused.value;
-    }
+    // State will sync via checkSimState
+  }
+}
+
+// Sync simulation state with UI
+function checkSimState() {
+  const running = mapRef.value?.isRunning;
+  if (typeof running === 'boolean') {
+    isPaused.value = !running;
   }
 }
 
@@ -580,7 +584,7 @@ onMounted(() => {
   // Add space key listener
   window.addEventListener('keydown', handleKeyPress);
 
-  // Check initial pitch after a short delay to ensure map is loaded
+  // Check initial state after a short delay to ensure map is loaded
   setTimeout(() => {
     const followState = mapRef.value?.isFollowing;
     if (followState !== undefined) {
@@ -592,16 +596,17 @@ onMounted(() => {
       is2D.value = pitch < 5;
     }
 
-    const running = mapRef.value?.isRunning;
-    if (typeof running === 'boolean') {
-      isPaused.value = !running;
-    }
+    checkSimState();
   }, 500);
-});
-
-// Cleanup
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyPress);
+  
+  // Check periodically to keep in sync (reduced frequency for better performance)
+  const syncInterval = setInterval(checkSimState, 250);
+  
+  // Cleanup on unmount
+  onUnmounted(() => {
+    window.removeEventListener('keydown', handleKeyPress);
+    clearInterval(syncInterval);
+  });
 });
 </script>
 

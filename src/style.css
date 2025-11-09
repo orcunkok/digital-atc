@@ -19,7 +19,7 @@
   --color-bg: #f5f3f4;
   --color-bg-panel: #e9e7e5;
   --color-bg-hover: #f5f3f4;
-  --color-bg-hover-secondary: #b1a7a6;
+  --color-bg-hover-confirm: #31572c;
   --color-border: #b1a7a6;
   --color-active-bg: #212529;
   --color-active-fg: #f5f3f4;
@@ -225,7 +225,7 @@ body {
 .overlay-btn,
 .toggle-btn {
   padding: 8px 12px;
-  font-size: 10px;
+  font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border: 1px solid var(--color-text);
@@ -243,8 +243,9 @@ body {
 .overlay-btn.active,
 .overlay-btn.is-active,
 .toggle-btn.active {
-  background: var(--color-active-bg);
-  color: var(--color-active-fg);
+  background: rgba(0, 0, 0, 0.1);
+  color: var(--color-text);
+  border-width: 0.5px;
 }
 
 .toggle-switch {
@@ -256,13 +257,21 @@ body {
   overflow: hidden;
 }
 
-.toggle-btn {
-  border-right: 1px solid var(--color-text);
+.toggle-switch.disabled {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
-.toggle-btn:last-child {
-  border-right: none;
+.toggle-btn {
+  border: none;
 }
+
+.toggle-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+
 
 /* Right sidebar tabs */
 .tabs {
@@ -464,6 +473,7 @@ body {
   display: grid;
   grid-template-rows: 1fr 1fr;
   gap: 0;
+  --set-button-width: calc((100% - 80px) / 5);
 }
 
 .flight-strip-container,
@@ -557,6 +567,10 @@ body {
   flex: 1;
 }
 
+.playback-controls .btn:active {
+  opacity: 1;
+}
+
 .btn {
   padding: 8px 16px;
   font-size: 11px;
@@ -568,6 +582,7 @@ body {
   cursor: pointer;
   font-weight: 500;
   transition: all 0.15s ease;
+  width: var(--set-button-width, 80px);
 }
 
 .btn:hover {
@@ -592,7 +607,7 @@ body {
 /* Flight Strip */
 .flight-strip {
   background: var(--color-bg-panel);
-  padding: 16px 20px;
+  padding: 23px 20px;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 16px;
@@ -612,16 +627,6 @@ body {
   letter-spacing: 0.5px;
   color: var(--color-text-tertiary);
   font-weight: 600;
-}
-
-.strip-value {
-  font-size: 16px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.strip-callsign {
-  font-size: 20px;
 }
 
 .strip-input {
@@ -648,15 +653,11 @@ body {
   margin: 0;
 }
 
-.strip-button-field {
-  display: flex;
-  align-items: flex-end;
-}
-
-.strip-set-btn {
+.btn {
   width: 100%;
-  padding: 8px 16px;
-  font-size: 11px;
+  height: 30px;
+  padding: 0 16px;
+  font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border: 1px solid var(--color-text);
@@ -665,15 +666,17 @@ body {
   cursor: pointer;
   font-weight: 500;
   transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.strip-set-btn:hover {
-  background: var(--color-active-bg);
-  color: var(--color-active-fg);
+.flight-data-panel .btn:hover {
+  background: var(--color-bg-hover-confirm);
 }
 
-.strip-set-btn:active {
-  transform: translateY(1px);
+.flight-data-panel .btn:active {
+  transform: translateX(1px);
 }
 
 .quick-actions-grid {
@@ -710,12 +713,18 @@ body {
 .atc-input-row {
   display: flex;
   gap: 8px;
+  padding-top: 4px;
   align-items: center;
+}
+
+.atc-input-row .btn {
+  width: var(--set-button-width, 80px);
 }
 
 .atc-input {
   flex: 1;
   padding: 10px 12px;
+  height: 30px;
   font-size: 12px;
   border: 1px solid var(--color-border);
   background: var(--color-bg-panel);

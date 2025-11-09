@@ -32,6 +32,14 @@ const originLon = -122.35;
 const originAltitudeMeters = 1000;
 const initialHeadingDeg = 20; // Initial heading from scenario
 
+// Constants (moved outside map.on callback for reuse)
+const DEG_TO_RAD = Math.PI / 180;
+const toRadians = (deg) => deg * DEG_TO_RAD;
+const TRIANGLE_LENGTH = 300;
+const TRIANGLE_WIDTH = 200;
+const TRIANGLE_BACK_RATIO = 0.3;
+const SHADOW_ELEVATION = 0.1;
+
 onMounted(() => {
   // Replace with your Mapbox access token
   mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
@@ -172,10 +180,6 @@ onMounted(() => {
       return [lngLat.lng, lngLat.lat];
     };
 
-    // Helper function for degree-to-radian conversion
-    const DEG_TO_RAD = Math.PI / 180;
-    const toRadians = (deg) => deg * DEG_TO_RAD;
-
     // Performance optimization: throttle updates for expensive operations
     let lastTrailUpdate = 0;
     let lastShadowUpdate = 0;
@@ -186,11 +190,7 @@ onMounted(() => {
     let trailSource = null;
     let shadowSource = null;
 
-    // Constants for shadow calculations
-    const TRIANGLE_LENGTH = 300;
-    const TRIANGLE_WIDTH = 200;
-    const TRIANGLE_BACK_RATIO = 0.3;
-    const SHADOW_ELEVATION = 0.1;
+    // Conversion constants
     const MPS_TO_KT = 1.944;
     const M_TO_FT = 3.28084;
     const MPS_TO_FPM = 196.85; // meters per second to feet per minute
@@ -206,7 +206,7 @@ onMounted(() => {
         // Update shared sim state
 
         // Calculate vertical speed from pitch
-        const pitchRad = (localState.pitchAngleDeg || 0) * (Math.PI / 180);
+        const pitchRad = toRadians(localState.pitchAngleDeg || 0);
         const verticalSpeedMps = localState.speedMps * Math.sin(pitchRad);
         const verticalSpeedFpm = verticalSpeedMps * MPS_TO_FPM;
 
@@ -338,6 +338,12 @@ onMounted(() => {
     const pressedKeys = new Set();
 
     function handleKeyDown(event) {
+      // Don't interfere with keyboard shortcuts (Ctrl, Alt, Meta) or when typing in inputs
+      if (event.ctrlKey || event.altKey || event.metaKey || 
+          event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+        return;
+      }
+      
       // Prevent default behavior and stop propagation for arrow keys, A/D, and W/S
       if (['ArrowUp', 'ArrowDown', 'a', 'A', 'd', 'D', 'w', 'W', 's', 'S'].includes(event.key)) {
         event.preventDefault();
@@ -348,6 +354,12 @@ onMounted(() => {
     }
 
     function handleKeyUp(event) {
+      // Don't interfere with keyboard shortcuts (Ctrl, Alt, Meta) or when typing in inputs
+      if (event.ctrlKey || event.altKey || event.metaKey || 
+          event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+        return;
+      }
+      
       // Stop propagation for arrow keys, A/D, and W/S
       if (['ArrowUp', 'ArrowDown', 'a', 'A', 'd', 'D', 'w', 'W', 's', 'S'].includes(event.key)) {
         event.preventDefault();
@@ -356,6 +368,11 @@ onMounted(() => {
       pressedKeys.delete(event.key);
       updateControls();
     }
+
+    // Cache last control values to avoid unnecessary updates
+    let lastSpeedInput = 0;
+    let lastTurnInput = 0;
+    let lastPitchInput = 0;
 
     function updateControls() {
       if (!sim.value) return;
@@ -375,7 +392,13 @@ onMounted(() => {
       if (pressedKeys.has('w') || pressedKeys.has('W')) pitchInput = -1;
       if (pressedKeys.has('s') || pressedKeys.has('S')) pitchInput = 1;
 
-      sim.value.setControls({ speed: speedInput, turn: turnInput, pitch: pitchInput });
+      // Only update if values changed
+      if (speedInput !== lastSpeedInput || turnInput !== lastTurnInput || pitchInput !== lastPitchInput) {
+        sim.value.setControls({ speed: speedInput, turn: turnInput, pitch: pitchInput });
+        lastSpeedInput = speedInput;
+        lastTurnInput = turnInput;
+        lastPitchInput = pitchInput;
+      }
     }
 
     // Add keyboard event listeners
@@ -457,11 +480,7 @@ defineExpose({
     // Reset shadow to initial position
     const shadowSrc = map.getSource('aircraft-shadow');
     if (shadowSrc && localToLatLon) {
-      const headingRad = (initialHeadingDeg * Math.PI) / 180;
-      const TRIANGLE_LENGTH = 300;
-      const TRIANGLE_WIDTH = 200;
-      const TRIANGLE_BACK_RATIO = 0.3;
-      const SHADOW_ELEVATION = 0.1;
+      const headingRad = toRadians(initialHeadingDeg);
       const sinH = Math.sin(headingRad);
       const cosH = Math.cos(headingRad);
       const backLength = TRIANGLE_LENGTH * TRIANGLE_BACK_RATIO;
@@ -517,10 +536,6 @@ onUnmounted(() => {
   if (map) {
     map.remove();
   }
-  
-  // Clear cached sources
-  trailSource = null;
-  shadowSource = null;
 });
 </script>
 
