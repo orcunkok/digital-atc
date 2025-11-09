@@ -3,7 +3,10 @@
     <!-- Header -->
     <header class="header">
       <div class="header-left">
-        <div class="logo">Digital ATC</div>
+        <div class="logo-container">
+          <div class="logo logo-main">Digital ATC</div>
+          <div class="logo logo-subtitle">dsb robotics</div>
+        </div>
         <div class="status-indicator"></div>
       </div>
       <div class="header-right">
@@ -178,7 +181,7 @@
           </div>
         </div>
 
-        <div class="state-subsection">
+        <div class="state-section">
           <div class="subsection-title">Current Intent</div>
           <div class="intent-item">
             <span class="intent-key">Target HDG</span>
@@ -194,21 +197,21 @@
           </div>
         </div>
 
-        <div class="state-subsection">
+        <div class="state-section">
           <div class="subsection-title">Clearance</div>
-          <div style="font-size: 11px; line-height: 1.6; color: #666">
+          <div style="font-size: 11px; line-height: 1.6; color: var(--color-text-secondary)">
             Proceed northbound along the shoreline at 1,500. Remain west of TFR.
           </div>
         </div>
 
-        <div class="state-subsection">
+        <div class="state-section">
           <div class="subsection-title">Conflicts</div>
-          <div style="font-size: 11px; color: #e01b24">
+          <div style="font-size: 11px; color: var(--color-error)">
             TFR projected 2.1 NM ahead
           </div>
         </div>
 
-        <div class="timeline-widget">
+        <div class="timeline-container">
           <div class="subsection-title">Timeline</div>
           <div class="timeline-bar">
             <div class="timeline-progress" :style="{ width: timelineProgress + '%' }"></div>
@@ -261,42 +264,41 @@
             <div class="waypoint-name">KOAK</div>
             <div class="waypoint-alt">Departure</div>
           </div>
-          <div style="font-size: 10px; color: #999">00:00</div>
+          <div style="font-size: 10px; color: var(--color-text-tertiary)">00:00</div>
         </div>
         <div class="flight-plan-item">
           <div>
             <div class="waypoint-name">Oakland Shoreline</div>
             <div class="waypoint-alt">1,500 ft</div>
           </div>
-          <div style="font-size: 10px; color: #999">00:03</div>
+          <div style="font-size: 10px; color: var(--color-text-tertiary)">00:03</div>
         </div>
         <div class="flight-plan-item">
           <div>
             <div class="waypoint-name">ALCTZ</div>
             <div class="waypoint-alt">1,500 ft</div>
           </div>
-          <div style="font-size: 10px; color: #999">00:45</div>
+          <div style="font-size: 10px; color: var(--color-text-tertiary)">00:45</div>
         </div>
         <div class="flight-plan-item">
           <div>
             <div class="waypoint-name">Golden Gate</div>
             <div class="waypoint-alt">1,500 ft</div>
           </div>
-          <div style="font-size: 10px; color: #999">01:10</div>
+          <div style="font-size: 10px; color: var(--color-text-tertiary)">01:10</div>
         </div>
       </div>
     </aside>
 
-    <!-- Bottom control strip -->
+    <!-- Bottom control panel -->
     <div class="control-strip">
-      <!-- Top row: Scenario + Flight Strip -->
-      <div class="control-row-top">
-        <div class="scenario-control">
+      <div class="scenario-panel">
+        <div class="scenario-selector">
           <div class="scenario-header">
             <span class="scenario-label">Scenario</span>
             <select class="scenario-select">
-              <option>A: SF VFR + TFR</option>
-              <option>B: KOAK IFR Go-Around</option>
+              <option>1 > SF VFR + TFR</option>
+              <option>2 > KOAK IFR Go-Around</option>
             </select>
           </div>
           <div class="playback-controls">
@@ -306,52 +308,14 @@
           </div>
         </div>
 
-        <div class="flight-strip">
-          <div class="strip-field">
-            <div class="strip-label">Callsign</div>
-            <div class="strip-value strip-callsign">{{ simState.callsign }}</div>
-          </div>
-          <div class="strip-field">
-            <div class="strip-label">ALT</div>
-            <div class="strip-value">{{ formatAltitude(simState.altitudeFt) }}</div>
-          </div>
-          <div class="strip-field">
-            <div class="strip-label">HDG</div>
-            <div class="strip-value">{{ Math.round(simState.headingDeg) }}°</div>
-          </div>
-          <div class="strip-field">
-            <div class="strip-label">SPD</div>
-            <div class="strip-value">{{ Math.round(simState.speedKt) }}</div>
-          </div>
-          <div class="strip-field">
-            <div class="strip-label">V/S</div>
-            <div class="strip-value">{{ formatVS(simState.vsFpm) }}</div>
-          </div>
-          <div class="strip-field">
-            <div class="strip-label">Phase</div>
-            <div class="strip-value" style="font-size: 11px; text-transform: uppercase">
-              {{ simState.phase }}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Bottom row: Quick Actions + ATC Console + Event Queue -->
-      <div class="control-row-bottom">
-        <div class="quick-actions">
+        <div class="quick-commands-panel">
           <div class="quick-actions-label">Quick Commands</div>
           <div class="quick-actions-grid">
             <button class="quick-btn" @click="quickCommand('Climb 2000')">
               Climb 2000
             </button>
-            <button class="quick-btn" @click="quickCommand('Descend 1000')">
-              Descend 1000
-            </button>
             <button class="quick-btn" @click="quickCommand('Turn L 270')">
               Turn L 270
-            </button>
-            <button class="quick-btn" @click="quickCommand('Turn R 360')">
-              Turn R 360
             </button>
             <button class="quick-btn" @click="quickCommand('Direct ALCTZ')">
               Direct ALCTZ
@@ -361,40 +325,71 @@
             </button>
           </div>
         </div>
+      </div>
 
-        <div class="atc-console">
-          <div class="atc-console-label">ATC Input</div>
-          <div class="atc-input-row">
-            <input
-              type="text"
-              class="atc-input"
-              placeholder="Type ATC instruction or use quick commands..."
-              v-model="atcInput"
-              @keyup.enter="sendATC"
-            />
-            <button class="btn" @click="sendATC">Send</button>
+      <div class="flight-data-panel">
+        <!-- Top row: Flight Strip -->
+        <div class="flight-strip-container">
+          <div class="flight-strip">
+            <div class="strip-field">
+              <div class="strip-label">Callsign</div>
+              <div class="strip-value strip-callsign">{{ simState.callsign }}</div>
+            </div>
+            <div class="strip-field">
+              <div class="strip-label">ALT</div>
+              <div class="strip-value">{{ formatAltitude(simState.altitudeFt) }}</div>
+            </div>
+            <div class="strip-field">
+              <div class="strip-label">HDG</div>
+              <div class="strip-value">{{ Math.round(simState.headingDeg) }}°</div>
+            </div>
+            <div class="strip-field">
+              <div class="strip-label">SPD</div>
+              <div class="strip-value">{{ Math.round(simState.speedKt) }}</div>
+            </div>
+            <div class="strip-field">
+              <div class="strip-label">V/S</div>
+              <div class="strip-value">{{ formatVS(simState.vsFpm) }}</div>
+            </div>
           </div>
         </div>
 
-        <div class="event-queue">
-          <div class="event-queue-label">Upcoming Events</div>
-          <div class="event-list">
-            <div class="event-item" :class="{ active: currentEventIndex === 0 }">
-              <span class="event-time">00:35</span>
-              <span class="event-desc">Current position</span>
+        <!-- Bottom row: ATC Console -->
+        <div class="atc-input-container">
+          <div class="atc-console">
+            <div class="atc-console-label">ATC Input</div>
+            <div class="atc-input-row">
+              <input
+                type="text"
+                class="atc-input"
+                placeholder="Type ATC instruction or use quick commands..."
+                v-model="atcInput"
+                @keyup.enter="sendATC"
+              />
+              <button class="btn" @click="sendATC">Send</button>
             </div>
-            <div class="event-item" :class="{ active: currentEventIndex === 1 }">
-              <span class="event-time">00:45</span>
-              <span class="event-desc">Add traffic 2 o'clock</span>
-            </div>
-            <div class="event-item" :class="{ active: currentEventIndex === 2 }">
-              <span class="event-time">00:48</span>
-              <span class="event-desc">ATC: Traffic advisory</span>
-            </div>
-            <div class="event-item" :class="{ active: currentEventIndex === 3 }">
-              <span class="event-time">01:20</span>
-              <span class="event-desc">ATC: Handoff NorCal</span>
-            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="event-queue">
+        <div class="event-queue-label">Upcoming Events</div>
+        <div class="event-list">
+          <div class="event-item" :class="{ active: currentEventIndex === 0 }">
+            <span class="event-time">00:35</span>
+            <span class="event-desc">Current position</span>
+          </div>
+          <div class="event-item" :class="{ active: currentEventIndex === 1 }">
+            <span class="event-time">00:45</span>
+            <span class="event-desc">Add traffic 2 o'clock</span>
+          </div>
+          <div class="event-item" :class="{ active: currentEventIndex === 2 }">
+            <span class="event-time">00:48</span>
+            <span class="event-desc">ATC: Traffic advisory</span>
+          </div>
+          <div class="event-item" :class="{ active: currentEventIndex === 3 }">
+            <span class="event-time">01:20</span>
+            <span class="event-desc">ATC: Handoff NorCal</span>
           </div>
         </div>
       </div>
