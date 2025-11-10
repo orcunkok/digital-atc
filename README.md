@@ -94,15 +94,15 @@ That's it. No Docker, no WSL, no 50GB downloads. Just works.
 
 - `VITE_MAPBOX_TOKEN` is required for terrain rendering. Sign up at [Mapbox](https://account.mapbox.com/) for a free developer token.
 - `VITE_OPENAI_API_KEY` enables the digital pilot. Copy your key from the [OpenAI dashboard](https://platform.openai.com/) and paste it into `.env`.
-- `VITE_OPENAI_MODEL` defaults to `gpt-4o-mini`, a fast/affordable model (~$0.15 per 1M input tokens, ~$0.60 per 1M output tokens). The YC demo flow stays under a few cents per recording.
+- `VITE_OPENAI_MODEL` defaults to `gpt-4o-mini`, a fast/affordable model (~$0.15 per 1M input tokens, ~$0.60 per 1M output tokens). The default demo flow stays under a cent.
 - If either token is missing the app will warn you on startup; Mapbox terrain and LLM automation fall back gracefully.
 
-## YC Demo Scenario
+## Default Demo Scenario
 
-- Choose **"YC Demo"** in the Scenario selector to run a scripted KOAK shoreline flight used in the YC walkthrough.
+- Choose **"Default Demo"** in the Scenario selector to run a scripted KOAK shoreline flight.
 - The timeline injects a realistic mix of ATC calls: climb & heading assignments, TFR avoidance, speed reduction for traffic, and a handoff.
 - Every ATC transmission is piped through the digital pilot (`src/llm/pilotAgent.js`); watch the Transcript tab for live readbacks and the State tab for updated intent/safety flags.
-- Scenario data lives in `scenarios/YC_KOAK_demo.json` and is executed by the runner in `src/sim/scenarioRunner.js`—tweak or extend events without touching UI wiring.
+- Scenario data lives in `scenarios/Default_KOAK_demo.json` and is executed by the runner in `src/sim/scenarioRunner.js`—tweak or extend events without touching UI wiring.
 
 ## Current Status
 

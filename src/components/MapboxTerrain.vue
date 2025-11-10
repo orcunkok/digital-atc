@@ -14,6 +14,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { createAircraftLayer } from './MapboxThree';
 import { createSim } from './sim';
 import { simState } from '../composables/useSimState';
+import { defaultStartState } from '../sim/defaultStartState';
 
 const mapContainer = ref(null);
 const isFollowing = ref(true);
@@ -27,12 +28,11 @@ let cleanupMapEvents = null;
 let localToLatLon = null;
 
 // Aircraft origin - will be set from scenario
-let originLat = 37.7213; // Default: KOAK area
-let originLon = -122.2207;
-let originAltitudeFt = 500; // Default: 500 ft MSL
-let initialHeadingDeg = 300; // Default: runway heading
-let initialSpeedKt = 140; // Default speed in knots
-let initialVsFpm = 500; // Default vertical speed
+let originLat = defaultStartState.lat;
+let originLon = defaultStartState.lon;
+let originAltitudeFt = defaultStartState.altitudeFt;
+let initialHeadingDeg = defaultStartState.headingDeg;
+let initialSpeedKt = defaultStartState.groundspeedKt;
 
 // Constants (moved outside map.on callback for reuse)
 const DEG_TO_RAD = Math.PI / 180;
@@ -46,17 +46,32 @@ const M_TO_FT = 3.28084;
 const MPS_TO_FPM = 196.85;
 const FT_TO_M = 0.3048;
 
-let pendingStartState = null;
+function computeShadowVertices(x, y, headingRad) {
+  const forwardEast = Math.sin(headingRad);
+  const forwardNorth = -Math.cos(headingRad);
+  const tailX = x - forwardEast * TRIANGLE_LENGTH * TRIANGLE_BACK_RATIO;
+  const tailY = y - forwardNorth * TRIANGLE_LENGTH * TRIANGLE_BACK_RATIO;
+  const leftEast = -forwardNorth;
+  const leftNorth = forwardEast;
+  const halfWidth = TRIANGLE_WIDTH / 2;
+
+  const nose = [x + forwardEast * TRIANGLE_LENGTH, y + forwardNorth * TRIANGLE_LENGTH];
+  const left = [tailX + leftEast * halfWidth, tailY + leftNorth * halfWidth];
+  const right = [tailX - leftEast * halfWidth, tailY - leftNorth * halfWidth];
+
+  return { nose, left, right };
+}
+
+let pendingStartState = { ...defaultStartState };
 let currentOriginAltitudeMeters = 0;
 
-function applyStartStateConfig(startState) {
-  if (!startState) return;
-  originLat = startState.lat ?? originLat;
-  originLon = startState.lon ?? originLon;
-  originAltitudeFt = startState.altitudeFt ?? originAltitudeFt;
-  initialHeadingDeg = startState.headingDeg ?? initialHeadingDeg;
-  initialSpeedKt = startState.groundspeedKt ?? initialSpeedKt;
-  initialVsFpm = startState.vsFpm ?? initialVsFpm;
+function applyStartStateConfig(startState = {}) {
+  const config = { ...defaultStartState, ...startState };
+  originLat = config.lat;
+  originLon = config.lon;
+  originAltitudeFt = config.altitudeFt;
+  initialHeadingDeg = config.headingDeg;
+  initialSpeedKt = config.groundspeedKt;
 }
 
 function refreshOriginAndConverters() {
@@ -315,31 +330,11 @@ onMounted(() => {
           if (!shadowSource) shadowSource = map.getSource('aircraft-shadow');
 
           const headingRad = toRadians(localState.headingDeg);
-          const backLength = TRIANGLE_LENGTH * TRIANGLE_BACK_RATIO;
-          const halfWidth = TRIANGLE_WIDTH / 2;
+          const { nose, left, right } = computeShadowVertices(localState.x, localState.y, headingRad);
 
-          const forwardEast = Math.sin(headingRad);
-          const forwardNorth = -Math.cos(headingRad);
-          const leftEast = -forwardNorth;
-          const leftNorth = forwardEast;
-          const rightEast = -leftEast;
-          const rightNorth = -leftNorth;
-
-          const noseX = localState.x + forwardEast * TRIANGLE_LENGTH;
-          const noseY = localState.y + forwardNorth * TRIANGLE_LENGTH;
-
-          const tailX = localState.x - forwardEast * backLength;
-          const tailY = localState.y - forwardNorth * backLength;
-
-          const leftX = tailX + leftEast * halfWidth;
-          const leftY = tailY + leftNorth * halfWidth;
-
-          const rightX = tailX + rightEast * halfWidth;
-          const rightY = tailY + rightNorth * halfWidth;
-
-          const [noseLng, noseLat] = localToLatLon(noseX, noseY, SHADOW_ELEVATION);
-          const [leftLng, leftLat] = localToLatLon(leftX, leftY, SHADOW_ELEVATION);
-          const [rightLng, rightLat] = localToLatLon(rightX, rightY, SHADOW_ELEVATION);
+          const [noseLng, noseLat] = localToLatLon(nose[0], nose[1], SHADOW_ELEVATION);
+          const [leftLng, leftLat] = localToLatLon(left[0], left[1], SHADOW_ELEVATION);
+          const [rightLng, rightLat] = localToLatLon(right[0], right[1], SHADOW_ELEVATION);
 
           shadowSource?.setData({
             type: 'Feature',
@@ -436,25 +431,15 @@ onMounted(() => {
     let lastTurnInput = 0;
     let lastPitchInput = 0;
 
+    const hasKey = (...keys) => keys.some((key) => pressedKeys.has(key));
+
     function updateControls() {
       if (!sim.value) return;
 
-      // Speed control: ArrowUp = speed up, ArrowDown = slow down
-      let speedInput = 0;
-      if (pressedKeys.has('ArrowUp')) speedInput = 1;
-      if (pressedKeys.has('ArrowDown')) speedInput = -1;
+      const speedInput = (hasKey('ArrowUp') ? 1 : 0) - (hasKey('ArrowDown') ? 1 : 0);
+      const turnInput = (hasKey('d', 'D') ? 1 : 0) - (hasKey('a', 'A') ? 1 : 0);
+      const pitchInput = (hasKey('s', 'S') ? 1 : 0) - (hasKey('w', 'W') ? 1 : 0);
 
-      // Turn control: A = turn left, D = turn right
-      let turnInput = 0;
-      if (pressedKeys.has('a') || pressedKeys.has('A')) turnInput = -1;
-      if (pressedKeys.has('d') || pressedKeys.has('D')) turnInput = 1;
-
-      // Pitch control: W = pitch down (descend), S = pitch up (climb)
-      let pitchInput = 0;
-      if (pressedKeys.has('w') || pressedKeys.has('W')) pitchInput = -1;
-      if (pressedKeys.has('s') || pressedKeys.has('S')) pitchInput = 1;
-
-      // Only update if values changed
       if (speedInput !== lastSpeedInput || turnInput !== lastTurnInput || pitchInput !== lastPitchInput) {
         sim.value.setControls({ speed: speedInput, turn: turnInput, pitch: pitchInput });
         lastSpeedInput = speedInput;
@@ -524,7 +509,7 @@ defineExpose({
     if (!startState) return;
 
     applyStartStateConfig(startState);
-    pendingStartState = { ...startState };
+    pendingStartState = { ...defaultStartState, ...startState };
 
     if (!map || !sim.value) return;
 
@@ -565,27 +550,11 @@ defineExpose({
     const shadowSrc = map.getSource('aircraft-shadow');
     if (shadowSrc && localToLatLon) {
       const headingRad = toRadians(initialHeadingDeg);
-      const forwardEast = Math.sin(headingRad);
-      const forwardNorth = -Math.cos(headingRad);
-      const leftEast = -forwardNorth;
-      const leftNorth = forwardEast;
-      const rightEast = -leftEast;
-      const rightNorth = -leftNorth;
-      const backLength = TRIANGLE_LENGTH * TRIANGLE_BACK_RATIO;
-      const halfWidth = TRIANGLE_WIDTH / 2;
+      const { nose, left, right } = computeShadowVertices(0, 0, headingRad);
 
-      const noseX = forwardEast * TRIANGLE_LENGTH;
-      const noseY = forwardNorth * TRIANGLE_LENGTH;
-      const tailX = -forwardEast * backLength;
-      const tailY = -forwardNorth * backLength;
-      const leftX = tailX + leftEast * halfWidth;
-      const leftY = tailY + leftNorth * halfWidth;
-      const rightX = tailX + rightEast * halfWidth;
-      const rightY = tailY + rightNorth * halfWidth;
-
-      const [noseLng, noseLat] = localToLatLon(noseX, noseY, SHADOW_ELEVATION);
-      const [leftLng, leftLat] = localToLatLon(leftX, leftY, SHADOW_ELEVATION);
-      const [rightLng, rightLat] = localToLatLon(rightX, rightY, SHADOW_ELEVATION);
+      const [noseLng, noseLat] = localToLatLon(nose[0], nose[1], SHADOW_ELEVATION);
+      const [leftLng, leftLat] = localToLatLon(left[0], left[1], SHADOW_ELEVATION);
+      const [rightLng, rightLat] = localToLatLon(right[0], right[1], SHADOW_ELEVATION);
       
       shadowSrc.setData({
         type: 'Feature',

@@ -461,6 +461,7 @@ import { useSimState } from './composables/useSimState';
 import { runPilotAgent, PilotAgentError } from './llm/pilotAgent';
 import { applyIntentToSim } from './llm/intentApplier';
 import { appConfig } from './utils/config';
+import { defaultStartState } from './sim/defaultStartState';
 import { createScenarioRunner } from './sim/scenarioRunner';
 import scenarioDefaultDemo from '../scenarios/Default_KOAK_demo.json';
 import scenarioLegacy from '../scenarios/KOAK_SF_VFR_TFR_traffic.json';
@@ -628,22 +629,22 @@ function clearRuntimeState({ resetMap = true } = {}) {
 
 function applyScenarioStartState(scenario) {
   if (!scenario) return;
-  const start = scenario.startState || {};
+  const start = { ...defaultStartState, ...(scenario.startState || {}) };
   pendingStartState.value = start;
   simState.value = {
     ...simState.value,
     callsign: scenario.callsign || simState.value.callsign,
-    phase: scenario.startState?.phase || simState.value.phase,
+    phase: start.phase || simState.value.phase,
     specialAction: null,
     targetHeadingDeg: null,
     targetAltitudeFt: null,
     targetSpeedKt: null,
-    altitudeFt: start.altitudeFt ?? simState.value.altitudeFt,
-    headingDeg: start.headingDeg ?? simState.value.headingDeg,
-    speedKt: start.groundspeedKt ?? simState.value.speedKt,
-    vsFpm: start.vsFpm ?? simState.value.vsFpm,
-    lat: start.lat ?? simState.value.lat,
-    lon: start.lon ?? simState.value.lon,
+    altitudeFt: start.altitudeFt,
+    headingDeg: start.headingDeg,
+    speedKt: start.groundspeedKt,
+    vsFpm: start.vsFpm,
+    lat: start.lat,
+    lon: start.lon,
   };
 
   if (mapRef.value?.initializeFromScenario) {

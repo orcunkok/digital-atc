@@ -145,10 +145,7 @@ export function createAircraftLayer({
           this.updatePosition(initialX, initialY, initialZ, headingDeg);
           map.triggerRepaint();
         },
-        (progress) => {
-          // Loading progress (optional)
-          console.log('Loading aircraft model:', progress);
-        },
+        undefined,
         (error) => {
           console.error('Error loading aircraft model:', error);
         }
