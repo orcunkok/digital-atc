@@ -1,0 +1,79 @@
+{
+  "id": "scenario_default_demo_shoreline",
+  "title": "Default Demo: KOAK shoreline departure with TFR and traffic",
+  "callsign": "N123AB",
+  "startState": {
+    "lat": 37.7290,
+    "lon": -122.2270,
+    "altitudeFt": 400,
+    "headingDeg": 300,
+    "groundspeedKt": 160,
+    "vsFpm": 1200,
+    "phase": "departure"
+  },
+  "events": [
+    {
+      "t": 5,
+      "type": "ATC",
+      "text": "N123AB, NorCal Departure, radar contact, fly runway heading, climb and maintain three thousand."
+    },
+    {
+      "t": 15,
+      "type": "ATC",
+      "text": "N123AB, right turn heading three three zero, join the Oakland shoreline transition, maintain three thousand."
+    },
+    {
+      "t": 35,
+      "type": "ADD_TFR",
+      "id": "TFR-OraclePark",
+      "name": "Oracle Park Event TFR",
+      "polygon": [
+        [-122.3904, 37.7794],
+        [-122.3875, 37.7794],
+        [-122.3875, 37.7841],
+        [-122.3910, 37.7841],
+        [-122.3910, 37.7794]
+      ],
+      "minAltFt": 0,
+      "maxAltFt": 4000
+    },
+    {
+      "t": 40,
+      "type": "ATC",
+      "text": "N123AB, Oracle Park TFR ahead, remain west of the stadium, report abeam Bay Bridge."
+    },
+    {
+      "t": 55,
+      "type": "ADD_TRAFFIC",
+      "traffic": {
+        "id": "TOUR1",
+        "lat": 37.8105,
+        "lon": -122.364,
+        "altitudeFt": 1500,
+        "headingDeg": 200,
+        "groundspeedKt": 100
+      }
+    },
+    {
+      "t": 58,
+      "type": "ATC",
+      "text": "N123AB, traffic two o'clock, two miles, same altitude, sightseeing helicopter. Reduce speed to one eight zero knots and maintain visual separation."
+    },
+    {
+      "t": 80,
+      "type": "ATC",
+      "text": "N123AB, continue right heading zero one zero to round Alcatraz, keep it tight along the shoreline, maintain three thousand."
+    },
+    {
+      "t": 100,
+      "type": "REMOVE_TRAFFIC",
+      "trafficId": "TOUR1"
+    },
+    {
+      "t": 110,
+      "type": "ATC",
+      "text": "N123AB, traffic no factor, resume own navigation, contact NorCal Approach one three five point one when ready."
+    }
+  ]
+}
+

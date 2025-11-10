@@ -26,11 +26,13 @@ let isTopDownView = false;
 let cleanupMapEvents = null;
 let localToLatLon = null;
 
-// Aircraft origin from KOAK_IFR_vectors_goaround scenario (lat/lon)
-const originLat = 37.70;
-const originLon = -122.35;
-const originAltitudeMeters = 1000;
-const initialHeadingDeg = 20; // Initial heading from scenario
+// Aircraft origin - will be set from scenario
+let originLat = 37.7213; // Default: KOAK area
+let originLon = -122.2207;
+let originAltitudeFt = 500; // Default: 500 ft MSL
+let initialHeadingDeg = 300; // Default: runway heading
+let initialSpeedKt = 140; // Default speed in knots
+let initialVsFpm = 500; // Default vertical speed
 
 // Constants (moved outside map.on callback for reuse)
 const DEG_TO_RAD = Math.PI / 180;
@@ -39,6 +41,63 @@ const TRIANGLE_LENGTH = 300;
 const TRIANGLE_WIDTH = 200;
 const TRIANGLE_BACK_RATIO = 0.3;
 const SHADOW_ELEVATION = 0.1;
+const MPS_TO_KT = 1.944;
+const M_TO_FT = 3.28084;
+const MPS_TO_FPM = 196.85;
+const FT_TO_M = 0.3048;
+
+let pendingStartState = null;
+let currentOriginAltitudeMeters = 0;
+
+function applyStartStateConfig(startState) {
+  if (!startState) return;
+  originLat = startState.lat ?? originLat;
+  originLon = startState.lon ?? originLon;
+  originAltitudeFt = startState.altitudeFt ?? originAltitudeFt;
+  initialHeadingDeg = startState.headingDeg ?? initialHeadingDeg;
+  initialSpeedKt = startState.groundspeedKt ?? initialSpeedKt;
+  initialVsFpm = startState.vsFpm ?? initialVsFpm;
+}
+
+function refreshOriginAndConverters() {
+  if (!map) return null;
+  const originAltitudeMetersAbsolute = originAltitudeFt * FT_TO_M;
+  originMercator = mapboxgl.MercatorCoordinate.fromLngLat(
+    [originLon, originLat],
+    originAltitudeMetersAbsolute
+  );
+  meterScale = originMercator.meterInMercatorCoordinateUnits();
+  localToLatLon = (localX, localY, localZ) => {
+    const mercatorX = originMercator.x + localX * meterScale;
+    const mercatorY = originMercator.y + localY * meterScale;
+    const mercatorZ = originMercator.z + localZ * meterScale;
+    const mercatorCoord = new mapboxgl.MercatorCoordinate(mercatorX, mercatorY, mercatorZ);
+    const lngLat = mercatorCoord.toLngLat();
+    return [lngLat.lng, lngLat.lat];
+  };
+  if (aircraftLayer) {
+    aircraftLayer.originMercator = originMercator;
+    aircraftLayer.scale = meterScale;
+  }
+  currentOriginAltitudeMeters = originAltitudeMetersAbsolute;
+  return originAltitudeMetersAbsolute;
+}
+
+function resetSimulationFromConfig() {
+  const originAltitudeMetersAbsolute = refreshOriginAndConverters();
+  if (!sim.value || !map || originAltitudeMetersAbsolute === null) {
+    return false;
+  }
+  if (sim.value.updateOriginAltitude) {
+    sim.value.updateOriginAltitude(originAltitudeMetersAbsolute);
+  }
+  sim.value.reset();
+  sim.value.setSpeed(initialSpeedKt);
+  sim.value.setHeading(initialHeadingDeg);
+  map.setCenter([originLon, originLat]);
+  aircraftLayer?.updatePosition?.(0, 0, 0, initialHeadingDeg, 0, 0);
+  return true;
+}
 
 onMounted(() => {
   // Replace with your Mapbox access token
@@ -56,6 +115,10 @@ onMounted(() => {
   });
 
   map.on('load', () => {
+    if (pendingStartState) {
+      applyStartStateConfig(pendingStartState);
+    }
+
     // Add terrain source
     map.addSource('mapbox-dem', {
       type: 'raster-dem',
@@ -78,12 +141,7 @@ onMounted(() => {
       },
     });
 
-    // Convert origin lat/lon to Mercator using Mapbox API
-    originMercator = mapboxgl.MercatorCoordinate.fromLngLat(
-      [originLon, originLat],
-      originAltitudeMeters
-    );
-    meterScale = originMercator.meterInMercatorCoordinateUnits();
+    const originAltitudeMetersAbsolute = refreshOriginAndConverters();
 
     // Create Three.js layer with local coordinates
     aircraftLayer = createAircraftLayer({
@@ -132,7 +190,7 @@ onMounted(() => {
       paint: {
         'line-emissive-strength': 1.0,
         'line-width': 6,
-        'line-color': '#F4D6CC',
+        'line-color': '#FF7F0E',
         'line-opacity': 0.7,
       },
     });
@@ -166,20 +224,6 @@ onMounted(() => {
       },
     });
 
-    // Helper function to convert local coordinates to lat/lon
-    localToLatLon = (localX, localY, localZ) => {
-      const mercatorX = originMercator.x + localX * meterScale;
-      const mercatorY = originMercator.y + localY * meterScale;
-      const mercatorZ = originMercator.z + localZ * meterScale;
-      const mercatorCoord = new mapboxgl.MercatorCoordinate(
-        mercatorX,
-        mercatorY,
-        mercatorZ
-      );
-      const lngLat = mercatorCoord.toLngLat();
-      return [lngLat.lng, lngLat.lat];
-    };
-
     // Performance optimization: throttle updates for expensive operations
     let lastTrailUpdate = 0;
     let lastShadowUpdate = 0;
@@ -190,16 +234,15 @@ onMounted(() => {
     let trailSource = null;
     let shadowSource = null;
 
-    // Conversion constants
-    const MPS_TO_KT = 1.944;
-    const M_TO_FT = 3.28084;
-    const MPS_TO_FPM = 196.85; // meters per second to feet per minute
-
+    // Start at origin altitude (z=0 relative to origin)
+    const initialAltitudeMetersRelative = 0;
+    
     // Create sim that works in local coordinates
     sim.value = createSim({
       initialHeadingDeg,
-      initialAltitudeMeters: 0, // Relative to origin
-      originAltitudeMeters, // Pass origin altitude for absolute target conversion
+      initialAltitudeMeters: initialAltitudeMetersRelative, // Relative to origin (0 = at origin altitude)
+      originAltitudeMeters: currentOriginAltitudeMeters, // Pass origin altitude for absolute target conversion
+      initialSpeedKt,
       onUpdate: (localState) => {
         const now = performance.now();
 
@@ -210,12 +253,18 @@ onMounted(() => {
         const verticalSpeedMps = localState.speedMps * Math.sin(pitchRad);
         const verticalSpeedFpm = verticalSpeedMps * MPS_TO_FPM;
 
+        const [currentLng, currentLat] = localToLatLon
+          ? localToLatLon(localState.x, localState.y, localState.z)
+          : [originLon, originLat];
+
         simState.value = {
           ...simState.value,
-          altitudeFt: Math.round((originAltitudeMeters + localState.z) * M_TO_FT),
+          altitudeFt: Math.round((currentOriginAltitudeMeters + localState.z) * M_TO_FT),
           headingDeg: localState.headingDeg,
           speedKt: Math.round(localState.speedMps * MPS_TO_KT),
           vsFpm: Math.round(verticalSpeedFpm),
+          lat: currentLat,
+          lon: currentLng,
         };
 
         // Update targets from sim
@@ -237,8 +286,7 @@ onMounted(() => {
 
         // Update camera to follow aircraft if follow mode is enabled
         if (isFollowing.value) {
-          const [lng, lat] = localToLatLon(localState.x, localState.y, localState.z);
-          map.setCenter([lng, lat]);
+          map.setCenter([currentLng, currentLat]);
         }
 
         // Throttle trail updates
@@ -251,7 +299,7 @@ onMounted(() => {
           for (const point of localState.positionHistory) {
             const [lng, lat] = localToLatLon(point.x, point.y, point.z);
             coordinates.push([lng, lat]);
-            elevations.push(isTopDownView ? 0 : originAltitudeMeters + point.z);
+            elevations.push(isTopDownView ? 0 : currentOriginAltitudeMeters + point.z);
           }
 
           trailSource?.setData({
@@ -267,17 +315,27 @@ onMounted(() => {
           if (!shadowSource) shadowSource = map.getSource('aircraft-shadow');
 
           const headingRad = toRadians(localState.headingDeg);
-          const sinH = Math.sin(headingRad);
-          const cosH = Math.cos(headingRad);
           const backLength = TRIANGLE_LENGTH * TRIANGLE_BACK_RATIO;
           const halfWidth = TRIANGLE_WIDTH / 2;
 
-          const noseX = localState.x + sinH * TRIANGLE_LENGTH;
-          const noseY = localState.y + cosH * TRIANGLE_LENGTH;
-          const leftX = localState.x - sinH * backLength - cosH * halfWidth;
-          const leftY = localState.y - cosH * backLength + sinH * halfWidth;
-          const rightX = localState.x - sinH * backLength + cosH * halfWidth;
-          const rightY = localState.y - cosH * backLength - sinH * halfWidth;
+          const forwardEast = Math.sin(headingRad);
+          const forwardNorth = -Math.cos(headingRad);
+          const leftEast = -forwardNorth;
+          const leftNorth = forwardEast;
+          const rightEast = -leftEast;
+          const rightNorth = -leftNorth;
+
+          const noseX = localState.x + forwardEast * TRIANGLE_LENGTH;
+          const noseY = localState.y + forwardNorth * TRIANGLE_LENGTH;
+
+          const tailX = localState.x - forwardEast * backLength;
+          const tailY = localState.y - forwardNorth * backLength;
+
+          const leftX = tailX + leftEast * halfWidth;
+          const leftY = tailY + leftNorth * halfWidth;
+
+          const rightX = tailX + rightEast * halfWidth;
+          const rightY = tailY + rightNorth * halfWidth;
 
           const [noseLng, noseLat] = localToLatLon(noseX, noseY, SHADOW_ELEVATION);
           const [leftLng, leftLat] = localToLatLon(leftX, leftY, SHADOW_ELEVATION);
@@ -285,7 +343,7 @@ onMounted(() => {
 
           shadowSource?.setData({
             type: 'Feature',
-            properties: { heading: Math.round(localState.headingDeg), elevation: originAltitudeMeters + SHADOW_ELEVATION },
+            properties: { heading: Math.round((localState.headingDeg + 360) % 360), elevation: currentOriginAltitudeMeters + SHADOW_ELEVATION },
             geometry: {
               type: 'Polygon',
               coordinates: [[[noseLng, noseLat], [leftLng, leftLat], [rightLng, rightLat], [noseLng, noseLat]]],
@@ -295,9 +353,13 @@ onMounted(() => {
       },
     });
 
-    // Start simulation
-    sim.value.start();
+    const hadPendingState = Boolean(pendingStartState);
+    if (resetSimulationFromConfig() && hadPendingState) {
+      pendingStartState = null;
+    }
 
+    // Start simulation (resetSimulationFromConfig stops it)
+    sim.value.start();
     // Navigation controls removed - using custom controls in App.vue
 
     // Track camera pitch to detect top-down view
@@ -384,8 +446,8 @@ onMounted(() => {
 
       // Turn control: A = turn left, D = turn right
       let turnInput = 0;
-      if (pressedKeys.has('a') || pressedKeys.has('A')) turnInput = 1;
-      if (pressedKeys.has('d') || pressedKeys.has('D')) turnInput = -1;
+      if (pressedKeys.has('a') || pressedKeys.has('A')) turnInput = -1;
+      if (pressedKeys.has('d') || pressedKeys.has('D')) turnInput = 1;
 
       // Pitch control: W = pitch down (descend), S = pitch up (climb)
       let pitchInput = 0;
@@ -458,12 +520,34 @@ defineExpose({
   getPitch() {
     return map ? map.getPitch() : 0;
   },
+  initializeFromScenario(startState) {
+    if (!startState) return;
+
+    applyStartStateConfig(startState);
+    pendingStartState = { ...startState };
+
+    if (!map || !sim.value) return;
+
+    const wasRunning = sim.value.isRunning;
+    if (resetSimulationFromConfig()) {
+      pendingStartState = null;
+      if (wasRunning) {
+        sim.value.start();
+      } else {
+        sim.value.stop();
+      }
+    }
+  },
   reset() {
     if (!sim.value || !map) return;
     
-    // Reset simulation
-    sim.value.reset();
-    
+    // Reset simulation to current config
+    const wasRunning = sim.value.isRunning;
+    resetSimulationFromConfig();
+    if (wasRunning) {
+      sim.value.start();
+    }
+
     // Clear trail
     const trailSrc = map.getSource('aircraft-trail');
     if (trailSrc) {
@@ -481,25 +565,31 @@ defineExpose({
     const shadowSrc = map.getSource('aircraft-shadow');
     if (shadowSrc && localToLatLon) {
       const headingRad = toRadians(initialHeadingDeg);
-      const sinH = Math.sin(headingRad);
-      const cosH = Math.cos(headingRad);
+      const forwardEast = Math.sin(headingRad);
+      const forwardNorth = -Math.cos(headingRad);
+      const leftEast = -forwardNorth;
+      const leftNorth = forwardEast;
+      const rightEast = -leftEast;
+      const rightNorth = -leftNorth;
       const backLength = TRIANGLE_LENGTH * TRIANGLE_BACK_RATIO;
       const halfWidth = TRIANGLE_WIDTH / 2;
-      
-      const noseX = sinH * TRIANGLE_LENGTH;
-      const noseY = cosH * TRIANGLE_LENGTH;
-      const leftX = -sinH * backLength - cosH * halfWidth;
-      const leftY = -cosH * backLength + sinH * halfWidth;
-      const rightX = -sinH * backLength + cosH * halfWidth;
-      const rightY = -cosH * backLength - sinH * halfWidth;
-      
+
+      const noseX = forwardEast * TRIANGLE_LENGTH;
+      const noseY = forwardNorth * TRIANGLE_LENGTH;
+      const tailX = -forwardEast * backLength;
+      const tailY = -forwardNorth * backLength;
+      const leftX = tailX + leftEast * halfWidth;
+      const leftY = tailY + leftNorth * halfWidth;
+      const rightX = tailX + rightEast * halfWidth;
+      const rightY = tailY + rightNorth * halfWidth;
+
       const [noseLng, noseLat] = localToLatLon(noseX, noseY, SHADOW_ELEVATION);
       const [leftLng, leftLat] = localToLatLon(leftX, leftY, SHADOW_ELEVATION);
       const [rightLng, rightLat] = localToLatLon(rightX, rightY, SHADOW_ELEVATION);
       
       shadowSrc.setData({
         type: 'Feature',
-        properties: { heading: initialHeadingDeg, elevation: originAltitudeMeters + SHADOW_ELEVATION },
+        properties: { heading: ((initialHeadingDeg % 360) + 360) % 360, elevation: originAltitudeFt * FT_TO_M + SHADOW_ELEVATION },
         geometry: {
           type: 'Polygon',
           coordinates: [[[noseLng, noseLat], [leftLng, leftLat], [rightLng, rightLat], [noseLng, noseLat]]],

@@ -7,7 +7,11 @@
           <div class="logo logo-main">Digital ATC</div>
           <div class="logo logo-subtitle">dsb robotics</div>
         </div>
-        <div class="status-indicator"></div>
+        <div
+          class="status-indicator"
+          :class="{ 'is-offline': !llmReady }"
+          :title="llmReady ? 'LLM ready' : 'LLM key missing'"
+        ></div>
       </div>
       <div class="header-right">
         <span>{{ simState.callsign }}</span>
@@ -209,16 +213,26 @@
 
         <div class="state-section">
           <div class="subsection-title">Clearance</div>
-          <div style="font-size: 11px; line-height: 1.6; color: var(--color-text-secondary)">
-            Proceed northbound along the shoreline at 1,500. Remain west of TFR.
+          <div class="state-note">
+            {{ lastClearance || 'Awaiting first ATC clearance.' }}
           </div>
         </div>
 
         <div class="state-section">
-          <div class="subsection-title">Conflicts</div>
-          <div style="font-size: 11px; color: var(--color-error)">
-            TFR projected 2.1 NM ahead
+          <div class="subsection-title">Safety</div>
+          <div
+            v-if="safetyFlags.conflictPredicted"
+            class="state-alert"
+          >
+            {{ safetyFlags.reason || 'Potential conflict predicted. Monitor trajectory.' }}
           </div>
+          <div
+            v-else-if="safetyFlags.needsClarification"
+            class="state-warning"
+          >
+            {{ safetyFlags.reason || 'Clarification requested by pilot.' }}
+          </div>
+          <div v-else class="state-note">No active alerts.</div>
         </div>
 
         <div class="timeline-container">
@@ -227,42 +241,29 @@
             <div class="timeline-progress" :style="{ width: timelineProgress + '%' }"></div>
           </div>
           <div class="timeline-labels">
-            <span>00:35</span>
-            <span>02:30</span>
+            <span>{{ elapsedLabel }}</span>
+            <span>{{ totalTimelineLabel }}</span>
           </div>
         </div>
       </div>
 
       <!-- Transcript tab -->
       <div class="tab-content" :class="{ active: activeTab === 'transcript' }">
-        <div class="log-entry">
-          <div class="log-time">00:05</div>
-          <div class="log-speaker atc">ATC</div>
-          <div class="log-text">
-            N123AB, NorCal Approach, radar contact, proceed northbound along the
-            shoreline at 1,500.
-          </div>
-        </div>
-        <div class="log-entry">
-          <div class="log-time">00:07</div>
-          <div class="log-speaker pilot">PILOT</div>
-          <div class="log-text">
-            NorCal, November One Two Three Alfa Bravo, shoreline northbound at one
-            thousand five hundred.
-          </div>
-        </div>
-        <div class="log-entry">
-          <div class="log-time">00:28</div>
-          <div class="log-speaker atc">ATC</div>
-          <div class="log-text">
-            N123AB, be advised TFR ahead, remain west of the TFR.
-          </div>
-        </div>
-        <div class="log-entry">
-          <div class="log-time">00:30</div>
-          <div class="log-speaker pilot">PILOT</div>
-          <div class="log-text">
-            November One Two Three Alfa Bravo, will remain west of the TFR.
+        <div v-if="!transcript.length" class="log-empty">No transmissions yet.</div>
+        <div v-else>
+          <div class="log-entry" v-for="entry in transcript" :key="entry.id">
+            <div class="log-time">{{ formatTimestamp(entry.elapsedSeconds) }}</div>
+            <div
+              class="log-speaker"
+              :class="{
+                atc: entry.speaker === 'ATC',
+                pilot: entry.speaker === 'PILOT',
+                system: entry.speaker !== 'ATC' && entry.speaker !== 'PILOT'
+              }"
+            >
+              {{ entry.speaker }}
+            </div>
+            <div class="log-text">{{ entry.text }}</div>
           </div>
         </div>
       </div>
@@ -306,9 +307,14 @@
         <div class="scenario-selector">
           <div class="scenario-header">
             <span class="scenario-label">Scenario</span>
-            <select class="scenario-select">
-              <option>1 > SF VFR + TFR</option>
-              <option>2 > KOAK IFR Go-Around</option>
+            <select class="scenario-select" v-model="selectedScenarioId">
+              <option
+                v-for="scenario in scenarios"
+                :key="scenario.id"
+                :value="scenario.id"
+              >
+                {{ scenario.label }}
+              </option>
             </select>
           </div>
           <div class="playback-controls">
@@ -396,7 +402,10 @@
         <!-- Bottom row: ATC Console -->
         <div class="atc-input-container">
           <div class="atc-console">
-            <div class="atc-console-label">ATC Input</div>
+            <div class="atc-console-label">
+              ATC Input
+              <span v-if="isProcessingAtc" class="atc-status">Processing…</span>
+            </div>
             <div class="atc-input-row">
               <input
                 type="text"
@@ -404,32 +413,40 @@
                 placeholder="Type ATC instruction or use quick commands..."
                 v-model="atcInput"
                 @keyup.enter="sendATC"
+                :disabled="isProcessingAtc"
               />
-              <button class="btn" @click="sendATC">Send</button>
+              <button
+                class="btn"
+                @click="sendATC"
+                :disabled="isProcessingAtc || !atcInput.trim()"
+              >
+                Send
+              </button>
             </div>
+            <div v-if="!llmReady" class="atc-hint">
+              Add <code>VITE_OPENAI_API_KEY</code> to enable the digital pilot.
+            </div>
+            <div v-if="errorMessage" class="atc-error">{{ errorMessage }}</div>
           </div>
         </div>
       </div>
 
       <div class="event-queue">
-        <div class="event-queue-label">Upcoming Simulated Events</div>
+        <div class="event-queue-label">{{ currentScenarioTitle }}</div>
         <div class="event-list">
-          <div class="event-item" :class="{ active: currentEventIndex === 0 }">
-            <span class="event-time">00:35</span>
-            <span class="event-desc">Current position</span>
+          <div
+            v-for="event in scenarioEvents"
+            :key="event.index"
+            class="event-item"
+            :class="{
+              active: currentEventIndex === event.index,
+              done: event.status === 'completed'
+            }"
+          >
+            <span class="event-time">{{ formatTimestamp(event.t || 0) }}</span>
+            <span class="event-desc">{{ describeEvent(event) }}</span>
           </div>
-          <div class="event-item" :class="{ active: currentEventIndex === 1 }">
-            <span class="event-time">00:45</span>
-            <span class="event-desc">Add traffic 2 o'clock</span>
-          </div>
-          <div class="event-item" :class="{ active: currentEventIndex === 2 }">
-            <span class="event-time">00:48</span>
-            <span class="event-desc">ATC: Traffic advisory</span>
-          </div>
-          <div class="event-item" :class="{ active: currentEventIndex === 3 }">
-            <span class="event-time">01:20</span>
-            <span class="event-desc">ATC: Handoff NorCal</span>
-          </div>
+          <div v-if="!scenarioEvents.length" class="event-empty">No scripted events.</div>
         </div>
       </div>
     </div>
@@ -437,10 +454,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { Unlock, Lock } from 'lucide-vue-next';
 import MapboxTerrain from './components/MapboxTerrain.vue';
 import { useSimState } from './composables/useSimState';
+import { runPilotAgent, PilotAgentError } from './llm/pilotAgent';
+import { applyIntentToSim } from './llm/intentApplier';
+import { appConfig } from './utils/config';
+import { createScenarioRunner } from './sim/scenarioRunner';
+import scenarioDefaultDemo from '../scenarios/Default_KOAK_demo.json';
+import scenarioLegacy from '../scenarios/KOAK_SF_VFR_TFR_traffic.json';
 
 const { simState } = useSimState();
 const mapRef = ref(null);
@@ -459,9 +482,13 @@ const layers = ref({
   navaids: false,
 });
 const chartOverlay = ref('none');
+const scenarios = [
+  { id: scenarioDefaultDemo.id, label: '1 » Default Demo', data: scenarioDefaultDemo },
+  { id: scenarioLegacy.id, label: '2 » SF VFR + TFR', data: scenarioLegacy },
+];
+const selectedScenarioId = ref(scenarios[0].id);
 const atcInput = ref('');
-const currentEventIndex = ref(0);
-const timelineProgress = ref(35);
+const timelineProgress = ref(0);
 
 // Flight strip control inputs
 const headingInput = ref(null);
@@ -469,15 +496,159 @@ const altitudeInput = ref(null);
 const speedInput = ref(null);
 const verticalSpeedInput = ref(null);
 
+// LLM + transcript state
+const transcript = ref([]);
+const safetyFlags = ref({
+  needsClarification: false,
+  conflictPredicted: false,
+  lostComms: false,
+  reason: null,
+});
+const lastClearance = ref('');
+const llmUsage = ref(null);
+const errorMessage = ref('');
+const isProcessingAtc = ref(false);
+const constraints = ref({ noGoAreas: [] });
+const traffic = ref([]);
+const sessionStart = ref(performance.now());
+
+const llmReady = computed(() => appConfig.openAi.hasApiKey);
+const mapReady = computed(() => Boolean(mapRef.value?.sim));
+const currentScenario = computed(
+  () => scenarios.find((item) => item.id === selectedScenarioId.value) || null
+);
+const currentScenarioTitle = computed(
+  () => currentScenario.value?.title || 'Scenario Timeline'
+);
+
+let messageCounter = 0;
+const timelineDurationSeconds = ref(180);
+const timelineElapsed = ref(0);
+const elapsedLabel = ref('00:00');
+const totalTimelineLabel = computed(() => formatTimestamp(timelineDurationSeconds.value));
+const pendingStartState = ref(null);
+
 // Helper functions
 function formatAltitude(ft) {
-  return ft.toLocaleString();
+  if (ft === null || ft === undefined) return '—';
+  return Math.round(ft).toLocaleString();
 }
 
 function formatVS(fpm) {
+  if (fpm === null || fpm === undefined) return '—';
   if (fpm === 0) return '0';
   const sign = fpm > 0 ? '+' : '';
   return sign + fpm;
+}
+
+function getElapsedSeconds() {
+  return (performance.now() - sessionStart.value) / 1000;
+}
+
+function formatTimestamp(seconds) {
+  if (typeof seconds !== 'number' || Number.isNaN(seconds)) return '--:--';
+  const total = Math.max(0, seconds);
+  const minutes = Math.floor(total / 60)
+    .toString()
+    .padStart(2, '0');
+  const secs = Math.floor(total % 60)
+    .toString()
+    .padStart(2, '0');
+  return `${minutes}:${secs}`;
+}
+
+function updateTimelineProgress(elapsedSeconds = getElapsedSeconds()) {
+  timelineElapsed.value = elapsedSeconds;
+  const duration = Math.max(timelineDurationSeconds.value, 1);
+  const progress = Math.min(100, Math.round((elapsedSeconds / duration) * 100));
+  timelineProgress.value = progress;
+  elapsedLabel.value = formatTimestamp(elapsedSeconds);
+}
+
+function addTranscriptEntry(speaker, text, elapsedSeconds = getElapsedSeconds()) {
+  if (!text) return;
+  messageCounter += 1;
+  transcript.value.push({
+    id: `${messageCounter}`,
+    speaker,
+    text,
+    elapsedSeconds,
+  });
+  updateTimelineProgress();
+}
+
+function describeEvent(event) {
+  if (!event) return '';
+  switch (event.type) {
+    case 'ATC': {
+      const text = event.text || '';
+      const trimmed = text.replace(/^\s*([A-Za-z0-9]+\s*,\s*)?/, '');
+      const short = trimmed.length > 60 ? `${trimmed.slice(0, 57)}…` : trimmed;
+      return `ATC · ${short}`;
+    }
+    case 'ADD_TFR':
+      return `Add TFR · ${event.name || event.id}`;
+    case 'REMOVE_TFR':
+      return `Remove TFR · ${event.name || event.id || event.tfrId}`;
+    case 'ADD_TRAFFIC':
+      return `Add traffic · ${(event.traffic && event.traffic.id) || 'unknown'}`;
+    case 'REMOVE_TRAFFIC':
+      return `Remove traffic · ${event.trafficId || event.id}`;
+    case 'NOTE':
+      return `Note · ${event.note || ''}`;
+    default:
+      return event.type || 'Event';
+  }
+}
+
+function clearRuntimeState({ resetMap = true } = {}) {
+  if (resetMap && mapRef.value?.reset) {
+    mapRef.value.reset();
+  }
+  isPaused.value = false;
+  sessionStart.value = performance.now();
+  timelineProgress.value = 0;
+  timelineElapsed.value = 0;
+  elapsedLabel.value = '00:00';
+  transcript.value = [];
+  safetyFlags.value = {
+    needsClarification: false,
+    conflictPredicted: false,
+    lostComms: false,
+    reason: null,
+  };
+  llmUsage.value = null;
+  lastClearance.value = '';
+  errorMessage.value = '';
+  atcInput.value = '';
+  messageCounter = 0;
+  constraints.value = { noGoAreas: [] };
+  traffic.value = [];
+}
+
+function applyScenarioStartState(scenario) {
+  if (!scenario) return;
+  const start = scenario.startState || {};
+  pendingStartState.value = start;
+  simState.value = {
+    ...simState.value,
+    callsign: scenario.callsign || simState.value.callsign,
+    phase: scenario.startState?.phase || simState.value.phase,
+    specialAction: null,
+    targetHeadingDeg: null,
+    targetAltitudeFt: null,
+    targetSpeedKt: null,
+    altitudeFt: start.altitudeFt ?? simState.value.altitudeFt,
+    headingDeg: start.headingDeg ?? simState.value.headingDeg,
+    speedKt: start.groundspeedKt ?? simState.value.speedKt,
+    vsFpm: start.vsFpm ?? simState.value.vsFpm,
+    lat: start.lat ?? simState.value.lat,
+    lon: start.lon ?? simState.value.lon,
+  };
+
+  if (mapRef.value?.initializeFromScenario) {
+    mapRef.value.initializeFromScenario(start);
+  }
 }
 
 function toggleLayer(layer) {
@@ -503,11 +674,155 @@ function quickCommand(cmd) {
   atcInput.value = instruction;
 }
 
-function sendATC() {
-  // TODO: Implement ATC sending logic
-  console.log('Sending ATC:', atcInput.value);
-  atcInput.value = '';
+async function sendATC() {
+  if (isProcessingAtc.value) return;
+  await processAtcInstruction(atcInput.value);
 }
+
+async function processAtcInstruction(rawText) {
+  const normalized = typeof rawText === 'string' ? rawText.trim() : '';
+  if (!normalized) return;
+
+  if (!mapReady.value) {
+    errorMessage.value = 'Simulator not ready yet. Please wait for the map to finish loading.';
+    return;
+  }
+
+  if (!llmReady.value) {
+    errorMessage.value = 'Set VITE_OPENAI_API_KEY to enable the digital pilot.';
+    return;
+  }
+
+  atcInput.value = '';
+  errorMessage.value = '';
+  lastClearance.value = normalized;
+  addTranscriptEntry('ATC', normalized);
+
+  const payload = {
+    atcText: normalized,
+    callsign: simState.value.callsign,
+    phase: simState.value.phase,
+    state: {
+      lat: simState.value.lat,
+      lon: simState.value.lon,
+      altitudeFt: simState.value.altitudeFt,
+      headingDeg: simState.value.headingDeg,
+      groundspeedKt: simState.value.speedKt,
+      vsFpm: simState.value.vsFpm,
+    },
+    constraints: {
+      noGoAreas: constraints.value.noGoAreas || [],
+    },
+    traffic: traffic.value,
+  };
+
+  try {
+    isProcessingAtc.value = true;
+    const agentResponse = await runPilotAgent(payload);
+    const { result, usage } = agentResponse;
+
+    addTranscriptEntry('PILOT', result.readback);
+
+    safetyFlags.value = {
+      needsClarification: Boolean(result.safetyFlags?.needsClarification),
+      conflictPredicted: Boolean(result.safetyFlags?.conflictPredicted),
+      lostComms: Boolean(result.safetyFlags?.lostComms),
+      reason: result.safetyFlags?.reason || null,
+    };
+
+    llmUsage.value = usage || null;
+
+    applyIntentToSim(mapRef.value?.sim, result.intent, simState);
+  } catch (error) {
+    const message =
+      error instanceof PilotAgentError || error?.name === 'PilotAgentError'
+        ? error.message
+        : error instanceof Error
+        ? error.message
+        : 'Pilot agent failed.';
+
+    errorMessage.value = message;
+  } finally {
+    isProcessingAtc.value = false;
+    updateTimelineProgress();
+  }
+}
+
+const scenarioRunner = createScenarioRunner({
+  onLoad: ({ scenario, duration }) => {
+    timelineDurationSeconds.value = duration;
+    timelineElapsed.value = 0;
+    elapsedLabel.value = '00:00';
+    constraints.value = { noGoAreas: [] };
+    traffic.value = [];
+    applyScenarioStartState(scenario);
+    // Initialize map/sim from scenario startState
+    if (scenario?.startState && mapRef.value?.initializeFromScenario) {
+      mapRef.value.initializeFromScenario(scenario.startState);
+    }
+  },
+  onReset: () => {
+    timelineElapsed.value = 0;
+    timelineProgress.value = 0;
+    elapsedLabel.value = '00:00';
+    constraints.value = { noGoAreas: [] };
+    traffic.value = [];
+    const scenario = scenarioRunner.state.activeScenario.value;
+    if (scenario) {
+      applyScenarioStartState(scenario);
+      if (scenario.startState && mapRef.value?.initializeFromScenario) {
+        mapRef.value.initializeFromScenario(scenario.startState);
+      }
+    }
+  },
+  onAtc: (text) => {
+    processAtcInstruction(text);
+  },
+  onAddTfr: (event) => {
+    const nextAreas = [...(constraints.value.noGoAreas || [])];
+    const entry = {
+      id: event.id,
+      name: event.name,
+      polygon: event.polygon,
+      minAltFt: event.minAltFt,
+      maxAltFt: event.maxAltFt,
+    };
+    const existingIndex = nextAreas.findIndex((area) => area.id === entry.id);
+    if (existingIndex >= 0) {
+      nextAreas[existingIndex] = entry;
+    } else {
+      nextAreas.push(entry);
+    }
+    constraints.value = { noGoAreas: nextAreas };
+  },
+  onRemoveTfr: (event) => {
+    const id = event.id || event.tfrId;
+    constraints.value = {
+      noGoAreas: (constraints.value.noGoAreas || []).filter((area) => area.id !== id),
+    };
+  },
+  onAddTraffic: (contact) => {
+    const entry = { ...contact };
+    traffic.value = [
+      ...traffic.value.filter((item) => item.id !== entry.id),
+      entry,
+    ];
+  },
+  onRemoveTraffic: (trafficId) => {
+    const id = typeof trafficId === 'object' ? trafficId.id : trafficId;
+    traffic.value = traffic.value.filter((item) => item.id !== id);
+  },
+  onTick: (elapsedSeconds, durationSeconds) => {
+    timelineDurationSeconds.value = durationSeconds;
+    updateTimelineProgress(elapsedSeconds);
+  },
+  onComplete: () => {
+    pauseSimulation();
+  },
+});
+
+const scenarioEvents = scenarioRunner.state.events;
+const currentEventIndex = scenarioRunner.state.currentEventIndex;
 
 function toggleFollow() {
   mapRef.value?.toggleFollow?.();
@@ -524,17 +839,26 @@ function toggleCenter() {
 
 function startSimulation() {
   mapRef.value?.start?.();
+  scenarioRunner.start();
   isPaused.value = false;
+  if (transcript.value.length === 0) {
+    sessionStart.value = performance.now();
+    timelineProgress.value = 0;
+    elapsedLabel.value = '00:00';
+    timelineElapsed.value = 0;
+  }
 }
 
 function pauseSimulation() {
   mapRef.value?.pause?.();
+  scenarioRunner.pause();
   isPaused.value = true;
 }
 
 function resetScenario() {
-  mapRef.value?.reset?.();
-  isPaused.value = false;
+  clearRuntimeState();
+  scenarioRunner.reset();
+  scenarioRunner.start();
 }
 
 function setViewMode(mode) {
@@ -547,7 +871,7 @@ function setViewMode(mode) {
 function setAll() {
   const sim = mapRef.value?.sim;
   if (!sim) return;
-  
+
   if (headingInput.value !== null && headingInput.value !== '') {
     sim.setHeading(headingInput.value);
   }
@@ -568,6 +892,7 @@ function handleKeyPress(event) {
     event.preventDefault();
     mapRef.value?.togglePause?.();
     // State will sync via checkSimState
+    checkSimState();
   }
 }
 
@@ -576,16 +901,50 @@ function checkSimState() {
   const running = mapRef.value?.isRunning;
   if (typeof running === 'boolean') {
     isPaused.value = !running;
+    const runnerState = scenarioRunner.state.isRunning.value;
+    if (running && !runnerState) {
+      scenarioRunner.start();
+    } else if (!running && runnerState) {
+      scenarioRunner.pause();
+    }
   }
 }
 
 // Sync initial state when map loads
+watch(
+  selectedScenarioId,
+  (id) => {
+    const scenario = scenarios.find((item) => item.id === id);
+    if (!scenario) return;
+    scenarioRunner.pause();
+    scenarioRunner.loadScenario(scenario.data);
+    const mapAvailable = Boolean(mapRef.value?.reset);
+    clearRuntimeState({ resetMap: mapAvailable });
+    scenarioRunner.reset();
+    if (mapAvailable) {
+      scenarioRunner.start();
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  () => mapRef.value,
+  (mapInstance) => {
+    if (mapInstance?.initializeFromScenario && pendingStartState.value) {
+      mapInstance.initializeFromScenario(pendingStartState.value);
+    }
+  },
+  { immediate: true }
+);
+
 onMounted(() => {
   // Add space key listener
   window.addEventListener('keydown', handleKeyPress);
 
   // Check initial state after a short delay to ensure map is loaded
   setTimeout(() => {
+    sessionStart.value = performance.now();
     const followState = mapRef.value?.isFollowing;
     if (followState !== undefined) {
       isFollowing.value = followState;
@@ -597,17 +956,19 @@ onMounted(() => {
     }
 
     checkSimState();
+    resetScenario();
   }, 500);
-  
+
   // Check periodically to keep in sync (reduced frequency for better performance)
   const syncInterval = setInterval(checkSimState, 250);
-  
+
   // Cleanup on unmount
   onUnmounted(() => {
     window.removeEventListener('keydown', handleKeyPress);
     clearInterval(syncInterval);
   });
 });
+
 </script>
 
 <style scoped>

@@ -97,6 +97,12 @@ body {
   height: 8px;
   border-radius: 50%;
   background: #4a4;
+  transition: background 0.2s ease, opacity 0.2s ease;
+}
+
+.status-indicator.is-offline {
+  background: var(--color-error);
+  opacity: 0.6;
 }
 
 .header-right,
@@ -368,6 +374,24 @@ body {
   color: var(--color-text-secondary);
 }
 
+.state-note {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+.state-alert {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--color-error);
+}
+
+.state-warning {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #bd6f00;
+}
+
 /* Timeline */
 .timeline-bar {
   width: 100%;
@@ -393,6 +417,12 @@ body {
 }
 
 /* Transcript */
+.log-empty {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  padding: 12px 0;
+}
+
 .log-entry {
   margin-bottom: 12px;
   display: flex;
@@ -419,6 +449,10 @@ body {
 
 .log-speaker.pilot {
   color: #26a269;
+}
+
+.log-speaker.system {
+  color: var(--color-text-secondary);
 }
 
 .log-text {
@@ -736,6 +770,33 @@ body {
   background: var(--color-bg);
 }
 
+.atc-status {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--color-text-tertiary);
+  margin-left: 8px;
+}
+
+.atc-hint {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+}
+
+.atc-hint code {
+  font-family: var(--font-mono);
+  background: var(--color-bg-panel);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
+.atc-error {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--color-error);
+}
+
 .atc-input,
 input,
 textarea,
@@ -765,6 +826,16 @@ select {
 .event-desc {
   flex: 1;
   color: var(--color-text-secondary);
+}
+
+.event-item.done {
+  opacity: 0.45;
+}
+
+.event-empty {
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  padding-top: 8px;
 }
 
 .event-item.active,

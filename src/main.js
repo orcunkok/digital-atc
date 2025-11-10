@@ -1,5 +1,8 @@
-import { createApp } from 'vue'
-import './style.css'
-import App from './App.vue'
+import { createApp } from 'vue';
+import './style.css';
+import App from './App.vue';
+import { assertStartupConfig } from './utils/config';
 
-createApp(App).mount('#app')
+assertStartupConfig();
+
+createApp(App).mount('#app');

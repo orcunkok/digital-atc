@@ -6,6 +6,8 @@ export const simState = ref({
   headingDeg: 330,
   speedKt: 110,
   vsFpm: 0,
+  lat: 37.7405,
+  lon: -122.232,
   callsign: 'N123AB',
   phase: 'enroute',
   targetHeadingDeg: null,

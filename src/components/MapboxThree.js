@@ -217,7 +217,8 @@ export function createAircraftLayer({
       const headingRad = toRadians(headingDeg);
       const bankAngleRad = toRadians(bankAngleDeg);
       const pitchAngleRad = toRadians(pitchAngleDeg);
-      this.aircraftGroup.rotation.set(-Math.PI / 2 + pitchAngleRad, headingRad, bankAngleRad);
+      const yawWithModelOffset = -headingRad + Math.PI; // Model faces -Y by default, rotate 180°
+      this.aircraftGroup.rotation.set(-Math.PI / 2 - pitchAngleRad, yawWithModelOffset, -bankAngleRad);
 
       // Trigger repaint
       this.map.triggerRepaint();

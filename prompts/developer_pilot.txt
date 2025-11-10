@@ -72,5 +72,15 @@ Expected:
   "meta": { "callsign": "N123AB", "phase": "enroute", "parsed": { "headings": [], "altitudesFt": [], "speedsKt": [], "fixes": ["BAY"], "keywords": ["clarification"] } }
 }
 
+Example 6 (Speed reduction + visual separation):
+ATC: “N123AB, reduce speed to 90 knots, maintain visual separation from the helicopter.”
+Expected:
+{
+  "readback": "NorCal, November One Two Three Alfa Bravo, reducing to niner zero knots, maintaining visual separation with the helicopter.",
+  "intent": { "targetHeadingDeg": null, "turnDirection": null, "targetAltitudeFt": null, "altitudeRestriction": null, "targetSpeedKt": 90, "verticalMode": null, "specialAction": "maintainVisualSeparation", "navigation": null, "notes": null },
+  "safetyFlags": { "needsClarification": false, "conflictPredicted": false, "lostComms": false, "reason": null },
+  "meta": { "callsign": "N123AB", "phase": "enroute", "parsed": { "headings": [], "altitudesFt": [], "speedsKt": [90], "fixes": [], "keywords": ["slow"] } }
+}
+
 ATC Instruction:
 "{atcText}"

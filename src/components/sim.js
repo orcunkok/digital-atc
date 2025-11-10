@@ -9,8 +9,9 @@
  */
 export function createSim({
   initialHeadingDeg = 0,
-  initialAltitudeMeters = 1000,
+  initialAltitudeMeters = 0,
   originAltitudeMeters = 0, // Absolute altitude of origin (for converting absolute targets to relative)
+  initialSpeedKt = 140, // Initial speed in knots
   onUpdate,
 }) {
   // Conversion constants
@@ -32,14 +33,14 @@ export function createSim({
     return diff;
   };
 
-  // Simulation parameters
-  const minSpeedMps = 60; // Minimum speed (meters per second)
-  const maxSpeedMps = 130; // Maximum speed (meters per second)
-  const speedAccelMps2 = 10; // Speed acceleration (m/s²)
-  const maxTurnRateDegps = 3; // Maximum turn rate (degrees per second)
+  // Simulation parameters - Jet-liner class with demo-friendly turn rates
+  const minSpeedMps = 80 * KT_TO_MPS; // Minimum speed ~80 kt (meters per second)
+  const maxSpeedMps = 250 * KT_TO_MPS; // Maximum speed ~250 kt (meters per second) - jet-liner cruise
+  const speedAccelMps2 = 2.0; // Speed acceleration (m/s²) - realistic for jet-liner
+  const maxTurnRateDegps = 3; // Maximum turn rate (degrees per second) - kept demo-friendly
   const bankAngleSmoothingRate = 15; // Bank angle change rate (degrees per second)
-  const maxClimbRateMps = 20.32; // Maximum climb rate (4000 fpm in m/s)
-  const maxDescentRateMps = 20.32; // Maximum descent rate (4000 fpm in m/s)
+  const maxClimbRateMps = 30.48; // Maximum climb rate (6000 fpm in m/s) - jet-liner capability
+  const maxDescentRateMps = 25.4; // Maximum descent rate (5000 fpm in m/s) - jet-liner capability
   const maxPitchAngleDeg = 15; // Maximum pitch angle (degrees, ±15 degrees)
   const pitchAngleSmoothingRate = 3; // Pitch angle change rate (degrees per second)
   const g = 9.81; // Gravitational acceleration (m/s²)
@@ -54,7 +55,7 @@ export function createSim({
   let y = 0; // north (meters)
   let z = initialAltitudeMeters; // altitude (meters)
   let headingDeg = initialHeadingDeg;
-  let speedMps = 200; // Current speed (meters per second)
+  let speedMps = initialSpeedKt * KT_TO_MPS; // Current speed (meters per second) - initialize from scenario
   let bankAngleDeg = 0; // Current bank angle (degrees, positive = right wing down)
   let pitchAngleDeg = 0; // Current pitch angle (degrees, positive = nose up)
 
@@ -68,6 +69,9 @@ export function createSim({
   let targetHeadingDeg = null; // Target heading in degrees
   let targetAltitudeFt = null; // Target altitude in feet (absolute, not relative)
   let verticalSpeedLimitFpm = null; // Vertical speed limit in feet per minute (constrains climb/descent rate)
+  
+  // Make originAltitudeMeters updatable for scenario changes
+  let currentOriginAltitudeMeters = originAltitudeMeters;
 
   let lastTimestamp = null;
   let animationFrameId = null;
@@ -157,7 +161,7 @@ export function createSim({
     
     if (targetAltitudeFt !== null) {
       // Convert target altitude from feet to meters (absolute to relative)
-      const targetAltitudeMeters = (targetAltitudeFt * FT_TO_M) - originAltitudeMeters;
+      const targetAltitudeMeters = (targetAltitudeFt * FT_TO_M) - currentOriginAltitudeMeters;
       const altitudeDiff = targetAltitudeMeters - z;
       
       if (Math.abs(altitudeDiff) > ALTITUDE_TOLERANCE_M) {
@@ -230,7 +234,7 @@ export function createSim({
     const headingRad = toRadians(headingDeg);
     const distance = speedMps * cosPitch * deltaTime;
     x += Math.sin(headingRad) * distance; // east component
-    y += Math.cos(headingRad) * distance; // north component
+    y -= Math.cos(headingRad) * distance; // north component (Mapbox y increases southward)
 
     // Update position history for trail
     const currentTime = timestamp;
@@ -335,7 +339,7 @@ export function createSim({
       headingDeg = initialHeadingDeg;
       bankAngleDeg = 0;
       pitchAngleDeg = 0;
-      speedMps = 200;
+      speedMps = initialSpeedKt * KT_TO_MPS; // Use initial speed from scenario
       speedInput = 0;
       turnInput = 0;
       pitchInput = 0;
@@ -435,6 +439,11 @@ export function createSim({
         altitudeFt: targetAltitudeFt,
         verticalSpeedLimitFpm: verticalSpeedLimitFpm,
       };
+    },
+    
+    updateOriginAltitude(newOriginAltitudeMeters) {
+      // Update the origin altitude used for absolute-to-relative conversions
+      currentOriginAltitudeMeters = newOriginAltitudeMeters;
     },
   };
 }
