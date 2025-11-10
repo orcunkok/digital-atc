@@ -15,9 +15,10 @@ import { createAircraftLayer } from './MapboxThree';
 import { createSim } from './sim';
 import { simState } from '../composables/useSimState';
 import { defaultStartState } from '../sim/defaultStartState';
+import { createTestAircraftLayer } from './test';
 
 const mapContainer = ref(null);
-const isFollowing = ref(true);
+const isFollowing = ref(false);
 let map = null;
 let aircraftLayer = null;
 const sim = ref(null);
@@ -239,6 +240,9 @@ onMounted(() => {
       },
     });
 
+    const testLayer = createTestAircraftLayer(map);
+    map.addLayer(testLayer);
+
     // Performance optimization: throttle updates for expensive operations
     let lastTrailUpdate = 0;
     let lastShadowUpdate = 0;
@@ -353,8 +357,8 @@ onMounted(() => {
       pendingStartState = null;
     }
 
-    // Start simulation (resetSimulationFromConfig stops it)
-    sim.value.start();
+    // Don't start simulation by default (paused for testing)
+    // sim.value.start();
     // Navigation controls removed - using custom controls in App.vue
 
     // Track camera pitch to detect top-down view
