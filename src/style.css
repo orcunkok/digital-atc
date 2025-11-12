@@ -92,6 +92,12 @@ body {
   margin-top: 2px;
 }
 
+.status-indicator-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .status-indicator {
   width: 8px;
   height: 8px;
@@ -101,8 +107,24 @@ body {
 }
 
 .status-indicator.is-offline {
+  background: #FF6C0C; /* Orange */
+  opacity: 1;
+}
+
+.status-indicator.is-error {
   background: var(--color-error);
-  opacity: 0.6;
+  opacity: 1;
+}
+
+.status-error-text {
+  font-size: 11px;
+  color: var(--color-error);
+  font-weight: 500;
+}
+
+.status-warning-text {
+  color: #FF6C0C; /* Orange */
+  opacity: 1;
 }
 
 .header-right,

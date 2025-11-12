@@ -39,8 +39,8 @@ const DEG_TO_RAD = Math.PI / 180;
 const PITCH_THRESHOLD = 5;
 const TRIANGLE_LENGTH = 300;
 const TRIANGLE_WIDTH = 200;
-const TRIANGLE_BACK_RATIO = 0.3;
-const TRIANGLE_HALF_WIDTH = TRIANGLE_WIDTH / 2;
+const TRIANGLE_BACK_RATIO = 0.1;
+const TRIANGLE_HALF_WIDTH = TRIANGLE_WIDTH / 1.8;
 const SHADOW_ELEVATION = 0.1;
 const MPS_TO_KT = 1.944;
 const M_TO_FT = 3.28084;
@@ -219,7 +219,7 @@ onMounted(() => {
         'line-emissive-strength': 1.0,
         'line-width': 6,
         'line-color': '#FF7F0E',
-        'line-opacity': 0.7,
+        'line-opacity': 0.9,
       },
     });
 
@@ -245,7 +245,7 @@ onMounted(() => {
       type: 'fill-extrusion',
       source: 'aircraft-shadow',
       paint: {
-        'fill-extrusion-color': '#C83E4D',
+        'fill-extrusion-color': '#FF7F0E',
         'fill-extrusion-opacity': 1,
         'fill-extrusion-height': 0.1, // Very small height to ensure it's above trail
         'fill-extrusion-base': 0,

@@ -7,11 +7,20 @@
           <div class="logo logo-main">Digital ATC</div>
           <div class="logo logo-subtitle">dsb robotics</div>
         </div>
-        <div
-          class="status-indicator"
-          :class="{ 'is-offline': !llmReady }"
-          :title="llmReady ? 'LLM ready' : 'LLM key missing'"
-        ></div>
+        <div class="status-indicator-wrapper">
+          <div
+            class="status-indicator"
+            :class="{ 
+              'is-offline': !llmReady && !openAiRequestFailed,
+              'is-error': openAiRequestFailed
+            }"
+            :title="openAiRequestFailed ? (openAiKeyFailed ? 'OpenAI API Key failed' : 'OpenAI request failed') : (llmReady ? 'LLM ready' : 'LLM key missing')"
+          ></div>
+          <span v-if="openAiRequestFailed" class="status-error-text">
+            {{ openAiKeyFailed ? 'OpenAI API Key failed' : 'OpenAI request failed' }}
+          </span>
+          <span v-else-if="!llmReady" class="status-error-text status-warning-text">LLM key missing</span>
+        </div>
       </div>
       <div class="header-right">
         <span>{{ simState.callsign }}</span>
@@ -413,7 +422,6 @@
                 placeholder="Type ATC instruction or use quick commands..."
                 v-model="atcInput"
                 @keyup.enter="sendATC"
-                :disabled="isProcessingAtc"
               />
               <button
                 class="btn"
@@ -459,6 +467,7 @@ import { Unlock, Lock } from 'lucide-vue-next';
 import Map from './components/Map.vue';
 import { useSimState } from './composables/useSimState';
 import { runPilotAgent, PilotAgentError } from './llm/pilotAgent';
+import { OpenAiClientError } from './llm/openaiClient';
 import { applyIntentToSim } from './llm/intentApplier';
 import { appConfig } from './utils/config';
 import { defaultStartState } from './sim/defaultStartState';
@@ -508,6 +517,8 @@ const safetyFlags = ref({
 const lastClearance = ref('');
 const llmUsage = ref(null);
 const errorMessage = ref('');
+const openAiRequestFailed = ref(false);
+const openAiKeyFailed = ref(false);
 const isProcessingAtc = ref(false);
 const constraints = ref({ noGoAreas: [] });
 const traffic = ref([]);
@@ -621,6 +632,8 @@ function clearRuntimeState({ resetMap = true } = {}) {
   llmUsage.value = null;
   lastClearance.value = '';
   errorMessage.value = '';
+  openAiRequestFailed.value = false;
+  openAiKeyFailed.value = false;
   atcInput.value = '';
   messageCounter = 0;
   constraints.value = { noGoAreas: [] };
@@ -696,6 +709,8 @@ async function processAtcInstruction(rawText) {
 
   atcInput.value = '';
   errorMessage.value = '';
+  openAiRequestFailed.value = false;
+  openAiKeyFailed.value = false;
   lastClearance.value = normalized;
   addTranscriptEntry('ATC', normalized);
 
@@ -735,14 +750,53 @@ async function processAtcInstruction(rawText) {
 
     applyIntentToSim(mapRef.value?.sim, result.intent, simState);
   } catch (error) {
-    const message =
-      error instanceof PilotAgentError || error?.name === 'PilotAgentError'
-        ? error.message
-        : error instanceof Error
-        ? error.message
-        : 'Pilot agent failed.';
+    // Check if this is an OpenAI request failure
+    const openAiError =
+      error instanceof OpenAiClientError
+        ? error
+        : error instanceof PilotAgentError && error.cause instanceof OpenAiClientError
+        ? error.cause
+        : error?.cause instanceof OpenAiClientError
+        ? error.cause
+        : null;
 
-    errorMessage.value = message;
+    const isOpenAiError =
+      openAiError !== null ||
+      error instanceof OpenAiClientError ||
+      (error instanceof PilotAgentError && error.cause instanceof OpenAiClientError) ||
+      (error?.cause instanceof OpenAiClientError) ||
+      (error?.message === 'OpenAI request failed.');
+
+    if (isOpenAiError) {
+      // Check if it's specifically a key-related error
+      const errorToCheck = openAiError || error;
+      const isKeyError =
+        errorToCheck &&
+        (errorToCheck.status === 401 || // Unauthorized
+          errorToCheck.status === 403 || // Forbidden (could be key-related)
+          errorToCheck.code === 'missing_api_key' ||
+          errorToCheck.code === 'api_key_not_loaded' ||
+          (errorToCheck.details?.error?.code === 'invalid_api_key') ||
+          (errorToCheck.details?.error?.message?.toLowerCase().includes('api key')) ||
+          (errorToCheck.details?.error?.message?.toLowerCase().includes('authentication')) ||
+          (errorToCheck.message?.toLowerCase().includes('api key')) ||
+          (errorToCheck.message?.toLowerCase().includes('authentication')));
+
+      openAiRequestFailed.value = true;
+      openAiKeyFailed.value = Boolean(isKeyError);
+      errorMessage.value = ''; // Don't show error under ATC input for OpenAI errors
+    } else {
+      const message =
+        error instanceof PilotAgentError || error?.name === 'PilotAgentError'
+          ? error.message
+          : error instanceof Error
+          ? error.message
+          : 'Pilot agent failed.';
+
+      errorMessage.value = message;
+      openAiRequestFailed.value = false;
+      openAiKeyFailed.value = false;
+    }
   } finally {
     isProcessingAtc.value = false;
     updateTimelineProgress();
