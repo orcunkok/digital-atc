@@ -2,6 +2,16 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import mapboxgl from 'mapbox-gl';
 
+// Precomputed constants
+const DEG_TO_RAD = Math.PI / 180;
+const PI_OVER_2 = Math.PI / 2;
+const PI = Math.PI;
+const PITCH_THRESHOLD = 5;
+const MODEL_ORIGIN_OFFSET_X = -50; // meters left
+const EULER_ORDER = 'ZXY';
+
+const toRadians = (deg) => deg * DEG_TO_RAD;
+
 export function createAircraftLayer({
   originMercator,
   scale,
@@ -11,8 +21,6 @@ export function createAircraftLayer({
   headingDeg = 0,
   modelPath = '/Airplane.glb',
 }) {
-  const DEG_TO_RAD = Math.PI / 180;
-  const toRadians = (deg) => deg * DEG_TO_RAD;
 
   const layer = {
     id: 'aircraft-3d-layer',
@@ -47,12 +55,11 @@ export function createAircraftLayer({
       this.renderer.toneMapping = THREE.NoToneMapping;
       this.renderer.shadowMap.enabled = false;
 
-      // Node hierarchy:
-      // aircraftRoot (Mapbox position/scale only)
-      //  └─ headingNode (yaw only)
-      //      └─ modelFix (one-time static alignment: X=+π/2)
-      //          └─ attitude (pitch/roll only)
-      //              └─ mesh (GLTF scene)
+      // Initialize reusable objects to avoid GC pressure
+      this._tempMatrix = new THREE.Matrix4();
+      this._attEuler = new THREE.Euler(0, 0, 0, EULER_ORDER);
+
+      // Node hierarchy: aircraftRoot -> headingNode -> modelFix -> attitude -> mesh
       this.aircraftRoot = new THREE.Group();
       this.headingNode = new THREE.Group();
       this.modelFix = new THREE.Group();
@@ -63,12 +70,8 @@ export function createAircraftLayer({
       this.aircraftRoot.add(this.headingNode);
       this.scene.add(this.aircraftRoot);
 
-      // Map scaling lives on aircraftRoot, consistent with your code
       this.aircraftRoot.scale.set(this.scale, -this.scale, this.scale);
-
-      // One-time model alignment to match your “perfect” baseline:
-      // your working case was rotation.set(Math.PI/2, 0, 0)
-      this.modelFix.rotation.set(Math.PI / 2, Math.PI, 0);
+      this.modelFix.rotation.set(PI_OVER_2, PI, 0);
 
       // State cache for absolute angles (degrees)
       this._cachedHeadingDeg = headingDeg;
@@ -104,15 +107,8 @@ export function createAircraftLayer({
             }
           });
 
-          // If your GLB origin is on the right engine, offset the mesh inside attitude
-          const modelOriginOffsetX = -50; // meters left; adjust if needed
-          const modelOriginOffsetY = 0;
-          const modelOriginOffsetZ = 0;
-          this.mesh.position.set(
-            modelOriginOffsetX,
-            modelOriginOffsetY,
-            modelOriginOffsetZ
-          );
+          // Offset mesh to align model origin
+          this.mesh.position.set(MODEL_ORIGIN_OFFSET_X, 0, 0);
 
           // Add mesh under attitude node
           this.attitude.add(this.mesh);
@@ -132,19 +128,15 @@ export function createAircraftLayer({
       if (!this.aircraftRoot) return;
 
       const pitchView = this.map.getPitch();
-      if (Math.abs(pitchView) < 5) return;
+      if (Math.abs(pitchView) < PITCH_THRESHOLD) return;
 
       const canvas = this.map.getCanvas();
-      const width = canvas.width;
-      const height = canvas.height;
-      if (
-        this.renderer.domElement.width !== width ||
-        this.renderer.domElement.height !== height
-      ) {
+      const { width, height } = canvas;
+      const rendererEl = this.renderer.domElement;
+      if (rendererEl.width !== width || rendererEl.height !== height) {
         this.renderer.setSize(width, height, false);
       }
 
-      if (!this._tempMatrix) this._tempMatrix = new THREE.Matrix4();
       this._tempMatrix.fromArray(matrix);
       this.camera.projectionMatrix = this._tempMatrix;
 
@@ -152,9 +144,6 @@ export function createAircraftLayer({
       this.renderer.render(this.scene, this.camera);
     },
 
-    // Absolute setter you can call from your sim/inputs
-    // headingDeg: yaw (compass), bankAngleDeg: roll (right wing down +),
-    // pitchAngleDeg: pitch (nose up +). No yaw applied to attitude.
     updatePosition: function (
       x,
       y,
@@ -166,50 +155,30 @@ export function createAircraftLayer({
       if (!this.aircraftRoot) return;
 
       // Position in mercator meters
-      const mercatorX = this.originMercator.x + x * this.scale;
-      const mercatorY = this.originMercator.y + y * this.scale;
-      const mercatorZ = this.originMercator.z + z * this.scale;
-      this.aircraftRoot.position.set(mercatorX, mercatorY, mercatorZ);
+      const { x: ox, y: oy, z: oz } = this.originMercator;
+      this.aircraftRoot.position.set(
+        ox + x * this.scale,
+        oy + y * this.scale,
+        oz + z * this.scale
+      );
 
       // Cache angles
       this._cachedHeadingDeg = headingDeg ?? this._cachedHeadingDeg;
       this._cachedBankDeg = bankAngleDeg ?? this._cachedBankDeg;
       this._cachedPitchDeg = pitchAngleDeg ?? this._cachedPitchDeg;
 
-      // Apply yaw (heading) on headingNode ONLY
-      // Mapbox east=x, north=y; we keep your previous sign convention if needed.
-      const headingRad = toRadians(this._cachedHeadingDeg);
-      // If your previous code needed +π or sign flips, tweak here.
-      this.headingNode.rotation.set(0, 0, 0);
-      // Yaw around local Z of headingNode is not desired here (we want compass heading in XY plane).
-      // Use rotation around Z? In this Mercator setup, heading should rotate around +Z (up).
-      // So apply on headingNode.rotateZ:
-      this.headingNode.rotation.z = -headingRad;
+      // Apply yaw (heading) on headingNode
+      this.headingNode.rotation.z = -toRadians(this._cachedHeadingDeg);
 
-      // Apply pitch and roll on attitude ONLY (no yaw here)
-      const bankRad = toRadians(this._cachedBankDeg);
-      const pitchRad = toRadians(this._cachedPitchDeg);
-
-      // We want: pitch about local X, roll about local Z
-      // Use a fixed Euler order where X = pitch and Z = roll, and Y=0.
-      // 'ZXY' works: euler(x=pitch, y=0, z=roll)
-      if (!this._attEuler) this._attEuler = new THREE.Euler(0, 0, 0, 'ZXY');
-      this._attEuler.set(-pitchRad, 0, bankRad); // right wing down positive => roll negative around Z
+      // Apply pitch and roll on attitude (ZXY Euler order)
+      this._attEuler.set(
+        -toRadians(this._cachedPitchDeg),
+        0,
+        toRadians(this._cachedBankDeg)
+      );
       this.attitude.quaternion.setFromEuler(this._attEuler).normalize();
 
       this.map.triggerRepaint();
-    },
-
-    // Convenience method if you just want to set attitude elsewhere (WASD)
-    setAttitudeDegrees: function (pitchDeg, bankDeg) {
-      this.updatePosition(
-        0,
-        0,
-        0,
-        this._cachedHeadingDeg,
-        bankDeg,
-        pitchDeg
-      );
     },
 
     onRemove: function () {
