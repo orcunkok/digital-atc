@@ -14,10 +14,10 @@
               'is-offline': !llmReady && !openAiRequestFailed,
               'is-error': openAiRequestFailed
             }"
-            :title="openAiRequestFailed ? (openAiKeyFailed ? 'OpenAI API Key failed' : 'OpenAI request failed') : (llmReady ? 'LLM ready' : 'LLM key missing')"
+            :title="openAiRequestFailed ? (openAiKeyFailed ? 'OpenRouter API Key failed' : 'OpenRouter request failed') : (llmReady ? 'LLM ready' : 'LLM key missing')"
           ></div>
           <span v-if="openAiRequestFailed" class="status-error-text">
-            {{ openAiKeyFailed ? 'OpenAI API Key failed' : 'OpenAI request failed' }}
+            {{ openAiKeyFailed ? 'OpenRouter API Key failed' : 'OpenRouter request failed' }}
           </span>
           <span v-else-if="!llmReady" class="status-error-text status-warning-text">LLM key missing</span>
         </div>
@@ -421,7 +421,7 @@
               </button>
             </div>
             <div v-if="!llmReady" class="atc-hint">
-              Add <code>VITE_OPENAI_API_KEY</code> to enable the digital pilot.
+              Add <code>VITE_OPENROUTER_API_KEY</code> to enable the digital pilot.
             </div>
             <div v-if="errorMessage" class="atc-error">{{ errorMessage }}</div>
           </div>
@@ -430,7 +430,7 @@
 
       <div class="transcript-panel">
         <div class="transcript-panel-label">Transcript</div>
-        <div class="transcript-content">
+        <div class="transcript-content" ref="transcriptContentRef">
           <div v-if="!transcript.length" class="log-empty">No transmissions yet.</div>
           <div v-else>
             <div class="log-entry" v-for="entry in transcript" :key="entry.id">
@@ -455,12 +455,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { Unlock, Lock } from 'lucide-vue-next';
 import Map from './components/Map.vue';
 import { useSimState } from './composables/useSimState';
 import { runPilotAgent, PilotAgentError } from './llm/pilotAgent';
-import { OpenAiClientError } from './llm/openaiClient';
+import { OpenRouterClientError } from './llm/openrouterClient';
 import { applyIntentToSim } from './llm/intentApplier';
 import { appConfig } from './utils/config';
 import { defaultStartState } from './sim/defaultStartState';
@@ -471,6 +471,7 @@ import scenarioIFRGoaround from '../scenarios/KOAK_IFR_vectors_goaround.json';
 
 const { simState } = useSimState();
 const mapRef = ref(null);
+const transcriptContentRef = ref(null);
 const isFollowing = ref(true);
 const is2D = ref(false);
 const isPaused = ref(false); // Will sync with actual sim state on mount
@@ -519,7 +520,7 @@ const constraints = ref({ noGoAreas: [] });
 const traffic = ref([]);
 const sessionStart = ref(performance.now());
 
-const llmReady = computed(() => appConfig.openAi.hasApiKey);
+const llmReady = computed(() => appConfig.openRouter.hasApiKey);
 const mapReady = computed(() => Boolean(mapRef.value?.sim));
 const currentScenario = computed(
   () => scenarios.find((item) => item.id === selectedScenarioId.value) || null
@@ -701,7 +702,7 @@ async function processAtcInstruction(rawText) {
   }
 
   if (!llmReady.value) {
-    errorMessage.value = 'Set VITE_OPENAI_API_KEY to enable the digital pilot.';
+    errorMessage.value = 'Set VITE_OPENROUTER_API_KEY to enable the digital pilot.';
     return;
   }
 
@@ -748,22 +749,22 @@ async function processAtcInstruction(rawText) {
 
     applyIntentToSim(mapRef.value?.sim, result.intent, simState);
   } catch (error) {
-    // Check if this is an OpenAI request failure
+    // Check if this is an OpenRouter request failure
     const openAiError =
-      error instanceof OpenAiClientError
+      error instanceof OpenRouterClientError
         ? error
-        : error instanceof PilotAgentError && error.cause instanceof OpenAiClientError
+        : error instanceof PilotAgentError && error.cause instanceof OpenRouterClientError
         ? error.cause
-        : error?.cause instanceof OpenAiClientError
+        : error?.cause instanceof OpenRouterClientError
         ? error.cause
         : null;
 
     const isOpenAiError =
       openAiError !== null ||
-      error instanceof OpenAiClientError ||
-      (error instanceof PilotAgentError && error.cause instanceof OpenAiClientError) ||
-      (error?.cause instanceof OpenAiClientError) ||
-      (error?.message === 'OpenAI request failed.');
+      error instanceof OpenRouterClientError ||
+      (error instanceof PilotAgentError && error.cause instanceof OpenRouterClientError) ||
+      (error?.cause instanceof OpenRouterClientError) ||
+      (error?.message === 'OpenRouter request failed.');
 
     if (isOpenAiError) {
       // Check if it's specifically a key-related error
@@ -989,6 +990,18 @@ watch(
     }
   },
   { immediate: true }
+);
+
+// Auto-scroll transcript to bottom when new messages are added
+watch(
+  () => transcript.value.length,
+  () => {
+    nextTick(() => {
+      if (transcriptContentRef.value) {
+        transcriptContentRef.value.scrollTop = transcriptContentRef.value.scrollHeight;
+      }
+    });
+  }
 );
 
 onMounted(() => {

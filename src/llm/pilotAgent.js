@@ -4,7 +4,7 @@ import developerPromptTemplate from '../../prompts/developer_pilot.txt?raw';
 import validationPromptTemplate from '../../prompts/promt_validation.md?raw';
 import responseSchema from '../../schemas/response.schema.json';
 import requestSchema from '../../schemas/request.schema.json';
-import { callOpenAi, OpenAiClientError } from './openaiClient';
+import { callOpenRouter, OpenRouterClientError } from './openrouterClient';
 
 const ajv = new Ajv({
   allErrors: true,
@@ -112,7 +112,7 @@ export async function runPilotAgent(requestPayload) {
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const { content, usage } = await callOpenAi({ messages });
+      const { content, usage } = await callOpenRouter({ messages });
       lastRawResponse = content;
 
       const jsonCandidate = extractJsonBlock(content);
@@ -156,7 +156,7 @@ export async function runPilotAgent(requestPayload) {
         messages,
       };
     } catch (error) {
-      if (error instanceof OpenAiClientError) {
+      if (error instanceof OpenRouterClientError) {
         lastError = new PilotAgentError(error.message, {
           code: error.code,
           details: error.details,

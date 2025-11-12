@@ -7,8 +7,8 @@ export default defineConfig(({ mode }) => {
 
   const appConfig = {
     hasMapboxToken: Boolean(env.VITE_MAPBOX_TOKEN),
-    hasOpenAiKey: Boolean(env.VITE_OPENAI_API_KEY),
-    openAiModel: env.VITE_OPENAI_MODEL || 'gpt-4o-mini',
+    hasOpenRouterKey: Boolean(env.VITE_OPENROUTER_API_KEY),
+    openRouterModel: env.VITE_OPENROUTER_MODEL || 'openrouter/auto',
   };
 
   return {

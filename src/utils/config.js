@@ -1,15 +1,21 @@
 const rawConfig = typeof __APP_CONFIG__ !== 'undefined' ? __APP_CONFIG__ : {};
 
-const openAiModel =
-  import.meta.env.VITE_OPENAI_MODEL && import.meta.env.VITE_OPENAI_MODEL.trim().length > 0
-    ? import.meta.env.VITE_OPENAI_MODEL.trim()
-    : rawConfig.openAiModel || 'gpt-4o-mini';
+const envOrEmpty = (v) => (v && String(v).trim().length > 0 ? String(v).trim() : '');
+const hasEnv = (v) => Boolean(envOrEmpty(v));
+
+const hasOpenRouterKey =
+  Boolean(rawConfig.hasOpenRouterKey === true) || hasEnv(import.meta.env.VITE_OPENROUTER_API_KEY);
+
+const openRouterModel =
+  envOrEmpty(import.meta.env.VITE_OPENROUTER_MODEL) || rawConfig.openRouterModel || 'openrouter/auto';
 
 export const appConfig = {
   mapboxToken: import.meta.env.VITE_MAPBOX_TOKEN,
-  openAi: {
-    hasApiKey: Boolean(rawConfig.hasOpenAiKey && rawConfig.hasOpenAiKey === true),
-    model: openAiModel,
+  openRouter: {
+    hasApiKey: hasOpenRouterKey,
+    model: openRouterModel,
+    baseUrl: envOrEmpty(import.meta.env.VITE_OPENROUTER_BASE_URL) || 'https://openrouter.ai/api/v1',
+    title: envOrEmpty(import.meta.env.VITE_OPENROUTER_APP_TITLE) || 'Digital ATC',
   },
 };
 
@@ -20,10 +26,9 @@ export function assertStartupConfig() {
     );
   }
 
-  if (!rawConfig.hasOpenAiKey) {
+  if (!rawConfig.hasOpenRouterKey) {
     console.warn(
-      '[digital-atc] Missing OpenAI API key (VITE_OPENAI_API_KEY). LLM-powered pilot will run in mock/offline mode.'
+      '[digital-atc] Missing OpenRouter API key (VITE_OPENROUTER_API_KEY). LLM-powered pilot will run in mock/offline mode.'
     );
   }
 }
-
