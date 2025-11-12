@@ -12,7 +12,20 @@ const EULER_ORDER = 'ZXY';
 
 const toRadians = (deg) => deg * DEG_TO_RAD;
 
-export function createAircraftLayer({
+/**
+ * Creates a Three.js custom layer for Mapbox to display an aircraft GLB model
+ * All position updates use local coordinates (meters relative to origin)
+ * @param {Object} options - Configuration options
+ * @param {mapboxgl.MercatorCoordinate} options.originMercator - Origin point in Mercator coordinates
+ * @param {number} options.scale - Scale factor from origin (meterInMercatorCoordinateUnits)
+ * @param {number} options.initialX - Initial x position in meters (east, default: 0)
+ * @param {number} options.initialY - Initial y position in meters (north, default: 0)
+ * @param {number} options.initialZ - Initial z position in meters (altitude, default: 0)
+ * @param {number} options.headingDeg - Initial heading in degrees (default: 0)
+ * @param {string} options.modelPath - Path to GLB model (default: '/Airplane.glb')
+ * @returns {Object} Mapbox custom layer object
+ */
+export function createAircraftThreeLayer({
   originMercator,
   scale,
   initialX = 0,
@@ -21,7 +34,6 @@ export function createAircraftLayer({
   headingDeg = 0,
   modelPath = '/Airplane.glb',
 }) {
-
   const layer = {
     id: 'aircraft-3d-layer',
     type: 'custom',
@@ -188,3 +200,4 @@ export function createAircraftLayer({
 
   return layer;
 }
+

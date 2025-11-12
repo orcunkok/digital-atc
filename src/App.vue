@@ -101,7 +101,7 @@
 
     <!-- Map -->
     <div class="map">
-      <MapboxTerrain ref="mapRef" />
+      <Map ref="mapRef" />
       <div class="map-overlay">
         <button
           class="overlay-btn"
@@ -456,7 +456,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { Unlock, Lock } from 'lucide-vue-next';
-import MapboxTerrain from './components/MapboxTerrain.vue';
+import Map from './components/Map.vue';
 import { useSimState } from './composables/useSimState';
 import { runPilotAgent, PilotAgentError } from './llm/pilotAgent';
 import { applyIntentToSim } from './llm/intentApplier';

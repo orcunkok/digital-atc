@@ -1,13 +1,10 @@
 /**
+ * Composable for aircraft simulation
  * Point-mass aircraft simulation with keyboard controls
  * All calculations are in local coordinates (meters relative to origin)
- * @param {Object} options - Simulation options
- * @param {number} options.initialHeadingDeg - Initial heading in degrees
- * @param {number} options.initialAltitudeMeters - Initial altitude in meters
- * @param {Function} options.onUpdate - Callback function called with local state {x, y, z, headingDeg, speedMps}
- * @returns {Object} Simulation control object with start/stop/setControls methods
  */
-export function createSim({
+
+export function useAircraftSimulation({
   initialHeadingDeg = 0,
   initialAltitudeMeters = 0,
   originAltitudeMeters = 0, // Absolute altitude of origin (for converting absolute targets to relative)
@@ -447,4 +444,3 @@ export function createSim({
     },
   };
 }
-
