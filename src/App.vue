@@ -211,9 +211,14 @@
             <span>{{ simState.targetSpeedKt ? simState.targetSpeedKt + ' kt' : '—' }}</span>
           </div>
           <div class="intent-item">
+            <span class="intent-key">Target V/S</span>
+            <span>{{ simState.vsFpm !== null && simState.vsFpm !== undefined ? formatVS(simState.vsFpm) + ' fpm' : '—' }}</span>
+          </div>
+          <div class="intent-item">
             <span class="intent-key">VS Limit</span>
             <span>{{ simState.verticalSpeedLimitFpm ? simState.verticalSpeedLimitFpm + ' fpm' : '—' }}</span>
           </div>
+          
           <div class="intent-item">
             <span class="intent-key">Special Action</span>
             <span>{{ simState.specialAction || '—' }}</span>
