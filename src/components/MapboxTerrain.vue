@@ -15,9 +15,10 @@ import { createAircraftLayer } from './MapboxThree';
 import { createSim } from './sim';
 import { simState } from '../composables/useSimState';
 import { defaultStartState } from '../sim/defaultStartState';
+import { createTestAircraftLayer } from './test';
 
 const mapContainer = ref(null);
-const isFollowing = ref(true);
+const isFollowing = ref(false);
 let map = null;
 let aircraftLayer = null;
 const sim = ref(null);
@@ -34,32 +35,45 @@ let originAltitudeFt = defaultStartState.altitudeFt;
 let initialHeadingDeg = defaultStartState.headingDeg;
 let initialSpeedKt = defaultStartState.groundspeedKt;
 
-// Constants (moved outside map.on callback for reuse)
+// Precomputed constants
 const DEG_TO_RAD = Math.PI / 180;
-const toRadians = (deg) => deg * DEG_TO_RAD;
+const PITCH_THRESHOLD = 5;
 const TRIANGLE_LENGTH = 300;
 const TRIANGLE_WIDTH = 200;
 const TRIANGLE_BACK_RATIO = 0.3;
+const TRIANGLE_HALF_WIDTH = TRIANGLE_WIDTH / 2;
 const SHADOW_ELEVATION = 0.1;
 const MPS_TO_KT = 1.944;
 const M_TO_FT = 3.28084;
 const MPS_TO_FPM = 196.85;
 const FT_TO_M = 0.3048;
+const TRAIL_UPDATE_INTERVAL = 100;
+const SHADOW_UPDATE_INTERVAL = 100;
+const PITCH_UPDATE_THROTTLE = 50;
+
+const toRadians = (deg) => deg * DEG_TO_RAD;
 
 function computeShadowVertices(x, y, headingRad) {
-  const forwardEast = Math.sin(headingRad);
-  const forwardNorth = -Math.cos(headingRad);
-  const tailX = x - forwardEast * TRIANGLE_LENGTH * TRIANGLE_BACK_RATIO;
-  const tailY = y - forwardNorth * TRIANGLE_LENGTH * TRIANGLE_BACK_RATIO;
-  const leftEast = -forwardNorth;
-  const leftNorth = forwardEast;
-  const halfWidth = TRIANGLE_WIDTH / 2;
+  const sinH = Math.sin(headingRad);
+  const cosH = Math.cos(headingRad);
+  const forwardEast = sinH;
+  const forwardNorth = -cosH;
+  const leftEast = cosH;
+  const leftNorth = sinH;
+  
+  const forwardDist = TRIANGLE_LENGTH;
+  const tailDist = TRIANGLE_LENGTH * TRIANGLE_BACK_RATIO;
+  
+  const noseX = x + forwardEast * forwardDist;
+  const noseY = y + forwardNorth * forwardDist;
+  const tailX = x - forwardEast * tailDist;
+  const tailY = y - forwardNorth * tailDist;
 
-  const nose = [x + forwardEast * TRIANGLE_LENGTH, y + forwardNorth * TRIANGLE_LENGTH];
-  const left = [tailX + leftEast * halfWidth, tailY + leftNorth * halfWidth];
-  const right = [tailX - leftEast * halfWidth, tailY - leftNorth * halfWidth];
-
-  return { nose, left, right };
+  return {
+    nose: [noseX, noseY],
+    left: [tailX + leftEast * TRIANGLE_HALF_WIDTH, tailY + leftNorth * TRIANGLE_HALF_WIDTH],
+    right: [tailX - leftEast * TRIANGLE_HALF_WIDTH, tailY - leftNorth * TRIANGLE_HALF_WIDTH],
+  };
 }
 
 let pendingStartState = { ...defaultStartState };
@@ -239,15 +253,16 @@ onMounted(() => {
       },
     });
 
+    const testLayer = createTestAircraftLayer(map);
+    map.addLayer(testLayer);
+
+    // Cache sources to avoid repeated lookups
+    const trailSource = map.getSource('aircraft-trail');
+    const shadowSource = map.getSource('aircraft-shadow');
+    
     // Performance optimization: throttle updates for expensive operations
     let lastTrailUpdate = 0;
     let lastShadowUpdate = 0;
-    const TRAIL_UPDATE_INTERVAL = 100; // Update trail every 100ms
-    const SHADOW_UPDATE_INTERVAL = 100; // Update shadow every 100ms
-
-    // Cache sources to avoid repeated lookups
-    let trailSource = null;
-    let shadowSource = null;
 
     // Start at origin altitude (z=0 relative to origin)
     const initialAltitudeMetersRelative = 0;
@@ -307,17 +322,16 @@ onMounted(() => {
         // Throttle trail updates
         if (now - lastTrailUpdate >= TRAIL_UPDATE_INTERVAL && localState.positionHistory?.length > 1) {
           lastTrailUpdate = now;
-          if (!trailSource) trailSource = map.getSource('aircraft-trail');
           
           const coordinates = [];
           const elevations = [];
+          const zOffset = isTopDownView ? 0 : currentOriginAltitudeMeters;
           for (const point of localState.positionHistory) {
-            const [lng, lat] = localToLatLon(point.x, point.y, point.z);
-            coordinates.push([lng, lat]);
-            elevations.push(isTopDownView ? 0 : currentOriginAltitudeMeters + point.z);
+            coordinates.push(localToLatLon(point.x, point.y, point.z));
+            elevations.push(zOffset + point.z);
           }
 
-          trailSource?.setData({
+          trailSource.setData({
             type: 'Feature',
             properties: { elevation: elevations },
             geometry: { type: 'LineString', coordinates },
@@ -327,21 +341,23 @@ onMounted(() => {
         // Throttle shadow updates
         if (now - lastShadowUpdate >= SHADOW_UPDATE_INTERVAL) {
           lastShadowUpdate = now;
-          if (!shadowSource) shadowSource = map.getSource('aircraft-shadow');
 
           const headingRad = toRadians(localState.headingDeg);
           const { nose, left, right } = computeShadowVertices(localState.x, localState.y, headingRad);
 
-          const [noseLng, noseLat] = localToLatLon(nose[0], nose[1], SHADOW_ELEVATION);
-          const [leftLng, leftLat] = localToLatLon(left[0], left[1], SHADOW_ELEVATION);
-          const [rightLng, rightLat] = localToLatLon(right[0], right[1], SHADOW_ELEVATION);
+          const noseCoord = localToLatLon(nose[0], nose[1], SHADOW_ELEVATION);
+          const leftCoord = localToLatLon(left[0], left[1], SHADOW_ELEVATION);
+          const rightCoord = localToLatLon(right[0], right[1], SHADOW_ELEVATION);
 
-          shadowSource?.setData({
+          shadowSource.setData({
             type: 'Feature',
-            properties: { heading: Math.round((localState.headingDeg + 360) % 360), elevation: currentOriginAltitudeMeters + SHADOW_ELEVATION },
+            properties: {
+              heading: Math.round((localState.headingDeg + 360) % 360),
+              elevation: currentOriginAltitudeMeters + SHADOW_ELEVATION,
+            },
             geometry: {
               type: 'Polygon',
-              coordinates: [[[noseLng, noseLat], [leftLng, leftLat], [rightLng, rightLat], [noseLng, noseLat]]],
+              coordinates: [[noseCoord, leftCoord, rightCoord, noseCoord]],
             },
           });
         }
@@ -353,30 +369,28 @@ onMounted(() => {
       pendingStartState = null;
     }
 
-    // Start simulation (resetSimulationFromConfig stops it)
-    sim.value.start();
+    // Don't start simulation by default (paused for testing)
+    // sim.value.start();
     // Navigation controls removed - using custom controls in App.vue
 
     // Track camera pitch to detect top-down view
-    function updateTopDownState() {
-      const pitch = map.getPitch();
-      isTopDownView = Math.abs(pitch) < 5;
-    }
+    const updateTopDownState = () => {
+      isTopDownView = Math.abs(map.getPitch()) < PITCH_THRESHOLD;
+    };
 
-    // Listen for pitch changes (throttled to reduce overhead)
+    // Throttle pitch updates
     let pitchUpdateTimeout = null;
     const throttledUpdateTopDown = () => {
       if (pitchUpdateTimeout) return;
       pitchUpdateTimeout = setTimeout(() => {
         updateTopDownState();
         pitchUpdateTimeout = null;
-      }, 50);
+      }, PITCH_UPDATE_THROTTLE);
     };
 
     map.on('pitch', throttledUpdateTopDown);
     map.on('move', throttledUpdateTopDown);
     
-    // Store cleanup function for map events
     cleanupMapEvents = () => {
       if (map) {
         map.off('pitch', throttledUpdateTopDown);
@@ -388,21 +402,21 @@ onMounted(() => {
       }
     };
     
-    // Initialize state
     updateTopDownState();
 
     // Keyboard controls for aircraft
     const pressedKeys = new Set();
 
+    const CONTROL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'a', 'A', 'd', 'D', 'w', 'W', 's', 'S']);
+    const isControlKey = (key) => CONTROL_KEYS.has(key);
+    const shouldIgnore = (event) =>
+      event.ctrlKey || event.altKey || event.metaKey ||
+      event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA';
+
     function handleKeyDown(event) {
-      // Don't interfere with keyboard shortcuts (Ctrl, Alt, Meta) or when typing in inputs
-      if (event.ctrlKey || event.altKey || event.metaKey || 
-          event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
-        return;
-      }
+      if (shouldIgnore(event)) return;
       
-      // Prevent default behavior and stop propagation for arrow keys, A/D, and W/S
-      if (['ArrowUp', 'ArrowDown', 'a', 'A', 'd', 'D', 'w', 'W', 's', 'S'].includes(event.key)) {
+      if (isControlKey(event.key)) {
         event.preventDefault();
         event.stopPropagation();
       }
@@ -411,14 +425,9 @@ onMounted(() => {
     }
 
     function handleKeyUp(event) {
-      // Don't interfere with keyboard shortcuts (Ctrl, Alt, Meta) or when typing in inputs
-      if (event.ctrlKey || event.altKey || event.metaKey || 
-          event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
-        return;
-      }
+      if (shouldIgnore(event)) return;
       
-      // Stop propagation for arrow keys, A/D, and W/S
-      if (['ArrowUp', 'ArrowDown', 'a', 'A', 'd', 'D', 'w', 'W', 's', 'S'].includes(event.key)) {
+      if (isControlKey(event.key)) {
         event.preventDefault();
         event.stopPropagation();
       }
@@ -431,14 +440,14 @@ onMounted(() => {
     let lastTurnInput = 0;
     let lastPitchInput = 0;
 
-    const hasKey = (...keys) => keys.some((key) => pressedKeys.has(key));
+    const hasKey = (key) => pressedKeys.has(key) || pressedKeys.has(key.toUpperCase());
 
     function updateControls() {
       if (!sim.value) return;
 
-      const speedInput = (hasKey('ArrowUp') ? 1 : 0) - (hasKey('ArrowDown') ? 1 : 0);
-      const turnInput = (hasKey('d', 'D') ? 1 : 0) - (hasKey('a', 'A') ? 1 : 0);
-      const pitchInput = (hasKey('s', 'S') ? 1 : 0) - (hasKey('w', 'W') ? 1 : 0);
+      const speedInput = Number(hasKey('ArrowUp')) - Number(hasKey('ArrowDown'));
+      const turnInput = Number(hasKey('d')) - Number(hasKey('a'));
+      const pitchInput = Number(hasKey('s')) - Number(hasKey('w'));
 
       if (speedInput !== lastSpeedInput || turnInput !== lastTurnInput || pitchInput !== lastPitchInput) {
         sim.value.setControls({ speed: speedInput, turn: turnInput, pitch: pitchInput });
@@ -552,16 +561,19 @@ defineExpose({
       const headingRad = toRadians(initialHeadingDeg);
       const { nose, left, right } = computeShadowVertices(0, 0, headingRad);
 
-      const [noseLng, noseLat] = localToLatLon(nose[0], nose[1], SHADOW_ELEVATION);
-      const [leftLng, leftLat] = localToLatLon(left[0], left[1], SHADOW_ELEVATION);
-      const [rightLng, rightLat] = localToLatLon(right[0], right[1], SHADOW_ELEVATION);
+      const noseCoord = localToLatLon(nose[0], nose[1], SHADOW_ELEVATION);
+      const leftCoord = localToLatLon(left[0], left[1], SHADOW_ELEVATION);
+      const rightCoord = localToLatLon(right[0], right[1], SHADOW_ELEVATION);
       
       shadowSrc.setData({
         type: 'Feature',
-        properties: { heading: ((initialHeadingDeg % 360) + 360) % 360, elevation: originAltitudeFt * FT_TO_M + SHADOW_ELEVATION },
+        properties: {
+          heading: ((initialHeadingDeg % 360) + 360) % 360,
+          elevation: originAltitudeFt * FT_TO_M + SHADOW_ELEVATION,
+        },
         geometry: {
           type: 'Polygon',
-          coordinates: [[[noseLng, noseLat], [leftLng, leftLat], [rightLng, rightLat], [noseLng, noseLat]]],
+          coordinates: [[noseCoord, leftCoord, rightCoord, noseCoord]],
         },
       });
     }
