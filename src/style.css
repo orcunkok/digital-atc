@@ -508,7 +508,7 @@ body {
 .control-strip {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: 20% 1fr 20%;
+  grid-template-columns: 20% 1fr 27%;
   grid-template-rows: 90px 90px;
   gap: 1px;
   border-top: 1px solid var(--color-border);
@@ -546,11 +546,49 @@ body {
   grid-row: 2;
 }
 
-.event-queue {
+.transcript-panel {
   grid-column: 3;
   grid-row: 1 / -1;
   background: var(--color-bg);
-  padding: 12px 20px;
+  padding: 12px 0px 0px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.transcript-panel-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--color-text-tertiary);
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+
+.transcript-content {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-gutter: stable;
+}
+
+.transcript-content::-webkit-scrollbar {
+  width: 8px;
+  background: none;
+}
+
+.transcript-content::-webkit-scrollbar-thumb {
+  background: #a9a7a5;
+  border-radius: 4px;
+}
+
+.transcript-content::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-tertiary);
+}
+
+.event-queue-content {
   display: flex;
   flex-direction: column;
   gap: 8px;

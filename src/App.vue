@@ -161,10 +161,10 @@
         </div>
         <div
           class="tab"
-          :class="{ active: activeTab === 'transcript' }"
-          @click="activeTab = 'transcript'"
+          :class="{ active: activeTab === 'scenario' }"
+          @click="activeTab = 'scenario'"
         >
-          Transcript
+          Scenario
         </div>
         <div
           class="tab"
@@ -256,57 +256,46 @@
         </div>
       </div>
 
-      <!-- Transcript tab -->
-      <div class="tab-content" :class="{ active: activeTab === 'transcript' }">
-        <div v-if="!transcript.length" class="log-empty">No transmissions yet.</div>
-        <div v-else>
-          <div class="log-entry" v-for="entry in transcript" :key="entry.id">
-            <div class="log-time">{{ formatTimestamp(entry.elapsedSeconds) }}</div>
+      <!-- Scenario tab -->
+      <div class="tab-content" :class="{ active: activeTab === 'scenario' }">
+        <div class="event-queue-content">
+          <div class="event-queue-label">{{ currentScenarioTitle }}</div>
+          <div class="event-list">
             <div
-              class="log-speaker"
+              v-for="event in scenarioEvents"
+              :key="event.index"
+              class="event-item"
               :class="{
-                atc: entry.speaker === 'ATC',
-                pilot: entry.speaker === 'PILOT',
-                system: entry.speaker !== 'ATC' && entry.speaker !== 'PILOT'
+                active: currentEventIndex === event.index,
+                done: event.status === 'completed'
               }"
             >
-              {{ entry.speaker }}
+              <span class="event-time">{{ formatTimestamp(event.t || 0) }}</span>
+              <span class="event-desc">{{ describeEvent(event) }}</span>
             </div>
-            <div class="log-text">{{ entry.text }}</div>
+            <div v-if="!scenarioEvents.length" class="event-empty">No scripted events.</div>
           </div>
         </div>
       </div>
 
       <!-- Flight Plan tab -->
       <div class="tab-content" :class="{ active: activeTab === 'plan' }">
-        <div class="flight-plan-item">
-          <div>
-            <div class="waypoint-name">KOAK</div>
-            <div class="waypoint-alt">Departure</div>
+        <div v-if="flightPlan.length" class="flight-plan-list">
+          <div
+            v-for="(waypoint, index) in flightPlan"
+            :key="index"
+            class="flight-plan-item"
+          >
+            <div>
+              <div class="waypoint-name">{{ waypoint.name }}</div>
+              <div class="waypoint-alt">{{ waypoint.altitude }}</div>
+            </div>
+            <div style="font-size: 10px; color: var(--color-text-tertiary)">
+              {{ formatTimestamp(waypoint.timeSeconds) }}
+            </div>
           </div>
-          <div style="font-size: 10px; color: var(--color-text-tertiary)">00:00</div>
         </div>
-        <div class="flight-plan-item">
-          <div>
-            <div class="waypoint-name">Oakland Shoreline</div>
-            <div class="waypoint-alt">1,500 ft</div>
-          </div>
-          <div style="font-size: 10px; color: var(--color-text-tertiary)">00:03</div>
-        </div>
-        <div class="flight-plan-item">
-          <div>
-            <div class="waypoint-name">ALCTZ</div>
-            <div class="waypoint-alt">1,500 ft</div>
-          </div>
-          <div style="font-size: 10px; color: var(--color-text-tertiary)">00:45</div>
-        </div>
-        <div class="flight-plan-item">
-          <div>
-            <div class="waypoint-name">Golden Gate</div>
-            <div class="waypoint-alt">1,500 ft</div>
-          </div>
-          <div style="font-size: 10px; color: var(--color-text-tertiary)">01:10</div>
-        </div>
+        <div v-else class="event-empty">No flight plan available for this scenario.</div>
       </div>
     </aside>
 
@@ -393,7 +382,7 @@
               />
             </div>
             <div class="strip-field">
-              <div class="strip-label">VS Limit</div>
+              <div class="strip-label">V/S Limit</div>
               <input
                 type="number"
                 v-model.number="verticalSpeedInput"
@@ -439,22 +428,26 @@
         </div>
       </div>
 
-      <div class="event-queue">
-        <div class="event-queue-label">{{ currentScenarioTitle }}</div>
-        <div class="event-list">
-          <div
-            v-for="event in scenarioEvents"
-            :key="event.index"
-            class="event-item"
-            :class="{
-              active: currentEventIndex === event.index,
-              done: event.status === 'completed'
-            }"
-          >
-            <span class="event-time">{{ formatTimestamp(event.t || 0) }}</span>
-            <span class="event-desc">{{ describeEvent(event) }}</span>
+      <div class="transcript-panel">
+        <div class="transcript-panel-label">Transcript</div>
+        <div class="transcript-content">
+          <div v-if="!transcript.length" class="log-empty">No transmissions yet.</div>
+          <div v-else>
+            <div class="log-entry" v-for="entry in transcript" :key="entry.id">
+              <div class="log-time">{{ formatTimestamp(entry.elapsedSeconds) }}</div>
+              <div
+                class="log-speaker"
+                :class="{
+                  atc: entry.speaker === 'ATC',
+                  pilot: entry.speaker === 'PILOT',
+                  system: entry.speaker !== 'ATC' && entry.speaker !== 'PILOT'
+                }"
+              >
+                {{ entry.speaker }}
+              </div>
+              <div class="log-text">{{ entry.text }}</div>
+            </div>
           </div>
-          <div v-if="!scenarioEvents.length" class="event-empty">No scripted events.</div>
         </div>
       </div>
     </div>
@@ -474,6 +467,7 @@ import { defaultStartState } from './sim/defaultStartState';
 import { createScenarioRunner } from './sim/scenarioRunner';
 import scenarioDefaultDemo from '../scenarios/Default_KOAK_demo.json';
 import scenarioLegacy from '../scenarios/KOAK_SF_VFR_TFR_traffic.json';
+import scenarioIFRGoaround from '../scenarios/KOAK_IFR_vectors_goaround.json';
 
 const { simState } = useSimState();
 const mapRef = ref(null);
@@ -482,7 +476,7 @@ const is2D = ref(false);
 const isPaused = ref(false); // Will sync with actual sim state on mount
 
 // UI state
-const activeTab = ref('state');
+const activeTab = ref('state'); // 'state', 'scenario', or 'plan'
 const layers = ref({
   trail: true,
   flightPlan: true,
@@ -495,6 +489,7 @@ const chartOverlay = ref('none');
 const scenarios = [
   { id: scenarioDefaultDemo.id, label: '1 » Default Demo', data: scenarioDefaultDemo },
   { id: scenarioLegacy.id, label: '2 » SF VFR + TFR', data: scenarioLegacy },
+  { id: scenarioIFRGoaround.id, label: '3 » IFR Vectors Go-Around', data: scenarioIFRGoaround },
 ];
 const selectedScenarioId = ref(scenarios[0].id);
 const atcInput = ref('');
@@ -530,8 +525,11 @@ const currentScenario = computed(
   () => scenarios.find((item) => item.id === selectedScenarioId.value) || null
 );
 const currentScenarioTitle = computed(
-  () => currentScenario.value?.title || 'Scenario Timeline'
+  () => currentScenario.value?.data?.title || 'Scenario Timeline'
 );
+const flightPlan = computed(() => {
+  return currentScenario.value?.data?.flightPlan || [];
+});
 
 let messageCounter = 0;
 const timelineDurationSeconds = ref(180);

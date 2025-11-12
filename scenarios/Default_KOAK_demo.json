@@ -11,6 +11,33 @@
     "vsFpm": 1200,
     "phase": "departure"
   },
+  "flightPlan": [
+    {
+      "name": "KOAK",
+      "altitude": "Departure",
+      "timeSeconds": 0
+    },
+    {
+      "name": "Oakland Shoreline",
+      "altitude": "3,000 ft",
+      "timeSeconds": 15
+    },
+    {
+      "name": "Bay Bridge",
+      "altitude": "3,000 ft",
+      "timeSeconds": 40
+    },
+    {
+      "name": "ALCTZ",
+      "altitude": "3,000 ft",
+      "timeSeconds": 80
+    },
+    {
+      "name": "Golden Gate",
+      "altitude": "3,000 ft",
+      "timeSeconds": 110
+    }
+  ],
   "events": [
     {
       "t": 5,

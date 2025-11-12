@@ -32,7 +32,7 @@ export async function callOpenAi({ messages, responseFormat = { type: 'json_obje
     model: appConfig.openAi.model,
     messages,
     temperature,
-    max_tokens: 1200,
+    max_tokens: 600,
     response_format: responseFormat,
   };
 

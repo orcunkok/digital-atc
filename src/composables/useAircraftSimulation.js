@@ -9,6 +9,7 @@ export function useAircraftSimulation({
   initialAltitudeMeters = 0,
   originAltitudeMeters = 0, // Absolute altitude of origin (for converting absolute targets to relative)
   initialSpeedKt = 140, // Initial speed in knots
+  initialVerticalSpeedFpm = 0,
   onUpdate,
 }) {
   // Conversion constants
@@ -41,20 +42,87 @@ export function useAircraftSimulation({
   const maxPitchAngleDeg = 15; // Maximum pitch angle (degrees, ±15 degrees)
   const pitchAngleSmoothingRate = 3; // Pitch angle change rate (degrees per second)
   const g = 9.81; // Gravitational acceleration (m/s²)
+
+  const MIN_INIT_SPEED_KT = 40;
+  const MAX_INIT_SPEED_KT = 400;
+  const clampSpeedKt = (value) =>
+    Math.max(MIN_INIT_SPEED_KT, Math.min(MAX_INIT_SPEED_KT, value ?? MIN_INIT_SPEED_KT));
   
   // Tolerance constants
   const SPEED_TOLERANCE_MPS = 0.5; // 0.5 m/s tolerance for speed
   const HEADING_TOLERANCE_DEG = 1; // 1 degree tolerance for heading
   const ALTITUDE_TOLERANCE_M = 10; // 10 meters tolerance for altitude
 
+  const initialState = {
+    headingDeg: normalizeHeading(initialHeadingDeg),
+    altitudeMeters:
+      Number.isFinite(initialAltitudeMeters) ? initialAltitudeMeters : 0,
+    speedKt: clampSpeedKt(initialSpeedKt),
+    verticalSpeedFpm: Number.isFinite(initialVerticalSpeedFpm)
+      ? initialVerticalSpeedFpm
+      : 0,
+  };
+
   // Local coordinates (meters): x=east, y=north, z=up
   let x = 0; // east (meters)
   let y = 0; // north (meters)
-  let z = initialAltitudeMeters; // altitude (meters)
-  let headingDeg = initialHeadingDeg;
-  let speedMps = initialSpeedKt * KT_TO_MPS; // Current speed (meters per second) - initialize from scenario
+  let z = initialState.altitudeMeters; // altitude (meters)
+  let headingDeg = initialState.headingDeg;
+  let speedMps = initialState.speedKt * KT_TO_MPS; // Current speed (meters per second) - initialize from scenario
   let bankAngleDeg = 0; // Current bank angle (degrees, positive = right wing down)
   let pitchAngleDeg = 0; // Current pitch angle (degrees, positive = nose up)
+
+  function applyInitialStateToDynamics() {
+    // Normalize and clamp initial values
+    initialState.headingDeg = normalizeHeading(initialState.headingDeg ?? 0);
+    initialState.altitudeMeters = Number.isFinite(initialState.altitudeMeters)
+      ? initialState.altitudeMeters
+      : 0;
+    initialState.speedKt = clampSpeedKt(initialState.speedKt);
+    if (!Number.isFinite(initialState.verticalSpeedFpm)) {
+      initialState.verticalSpeedFpm = 0;
+    }
+
+    const desiredSpeedMps = Math.max(
+      minSpeedMps,
+      Math.min(maxSpeedMps, initialState.speedKt * KT_TO_MPS)
+    );
+
+    const desiredVerticalSpeedMps =
+      initialState.verticalSpeedFpm * FPM_TO_MPS;
+    const maxVsFromPitch =
+      desiredSpeedMps * Math.sin((maxPitchAngleDeg * Math.PI) / 180);
+    const limitedVerticalSpeedMps = Math.max(
+      -maxDescentRateMps,
+      Math.min(
+        maxClimbRateMps,
+        Math.max(-maxVsFromPitch, Math.min(maxVsFromPitch, desiredVerticalSpeedMps))
+      )
+    );
+
+    // Update stored values to reflect final clamps
+    initialState.speedKt = desiredSpeedMps / KT_TO_MPS;
+    initialState.verticalSpeedFpm = limitedVerticalSpeedMps / FPM_TO_MPS;
+
+    x = 0;
+    y = 0;
+    z = initialState.altitudeMeters;
+    headingDeg = initialState.headingDeg;
+    speedMps = desiredSpeedMps;
+    bankAngleDeg = 0;
+
+    const ratio =
+      desiredSpeedMps <= 0
+        ? 0
+        : Math.max(-1, Math.min(1, limitedVerticalSpeedMps / desiredSpeedMps));
+    const computedPitch = toDegrees(Math.asin(ratio));
+    pitchAngleDeg = Math.max(
+      -maxPitchAngleDeg,
+      Math.min(maxPitchAngleDeg, computedPitch)
+    );
+  }
+
+  applyInitialStateToDynamics();
 
   // Control inputs (set by keyboard)
   let speedInput = 0; // -1 to 1 (back to forward)
@@ -154,7 +222,8 @@ export function useAircraftSimulation({
       : bankAngleDiff;
 
     // Calculate target pitch angle from pitch input or automation target
-    let targetPitchAngleDeg = 0;
+    // Default to holding current pitch (so initial vsFpm is preserved)
+    let targetPitchAngleDeg = pitchAngleDeg;
     
     if (targetAltitudeFt !== null) {
       // Convert target altitude from feet to meters (absolute to relative)
@@ -330,13 +399,7 @@ export function useAircraftSimulation({
 
     reset() {
       this.stop();
-      x = 0;
-      y = 0;
-      z = initialAltitudeMeters;
-      headingDeg = initialHeadingDeg;
-      bankAngleDeg = 0;
-      pitchAngleDeg = 0;
-      speedMps = initialSpeedKt * KT_TO_MPS; // Use initial speed from scenario
+      applyInitialStateToDynamics();
       speedInput = 0;
       turnInput = 0;
       pitchInput = 0;
@@ -347,6 +410,39 @@ export function useAircraftSimulation({
       positionHistory = [];
       lastUpdateTime = null;
       cumulativeDistance = 0;
+    },
+
+    setInitialState(config = {}) {
+      if (config.headingDeg !== undefined) {
+        const value = Number(config.headingDeg);
+        if (Number.isFinite(value)) {
+          initialState.headingDeg = value;
+        }
+      }
+      if (config.speedKt !== undefined) {
+        const value = Number(config.speedKt);
+        if (Number.isFinite(value)) {
+          initialState.speedKt = value;
+        }
+      }
+      if (config.altitudeMeters !== undefined) {
+        const value = Number(config.altitudeMeters);
+        if (Number.isFinite(value)) {
+          initialState.altitudeMeters = value;
+        }
+      } else if (config.altitudeFt !== undefined) {
+        const value = Number(config.altitudeFt);
+        if (Number.isFinite(value)) {
+          initialState.altitudeMeters =
+            value * FT_TO_M - currentOriginAltitudeMeters;
+        }
+      }
+      if (config.verticalSpeedFpm !== undefined) {
+        const value = Number(config.verticalSpeedFpm);
+        if (Number.isFinite(value)) {
+          initialState.verticalSpeedFpm = value;
+        }
+      }
     },
 
     setControls({ speed, turn, pitch }) {

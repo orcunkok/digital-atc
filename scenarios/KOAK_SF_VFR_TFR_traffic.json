@@ -1,63 +1,85 @@
 {
-    "id": "scenario_sf_vfr_tfr_traffic",
-    "title": "SF Bay shoreline VFR with TFR + traffic",
-    "callsign": "N123AB",
-    "startState": {
-      "lat": 37.7405,
-      "lon": -122.2320,
-      "altitudeMeter": 1500,
-      "headingDeg": 330,
-      "groundspeedKt": 110,
-      "vsFpm": 0,
-      "phase": "enroute"
+  "id": "scenario_sf_vfr_tfr_traffic",
+  "title": "SF Bay shoreline VFR with TFR + traffic",
+  "callsign": "N123AB",
+  "startState": {
+    "lat": 37.7405,
+    "lon": -122.2320,
+    "altitudeFt": 1500,
+    "headingDeg": 330,
+    "groundspeedKt": 110,
+    "vsFpm": 0,
+    "phase": "enroute"
+  },
+  "flightPlan": [
+    {
+      "name": "Shoreline Start",
+      "altitude": "1,500 ft",
+      "timeSeconds": 0
     },
-    "events": [
-      {
-        "t": 5,
-        "type": "ATC",
-        "text": "N123AB, NorCal Approach, radar contact, proceed northbound along the shoreline at 1,500, remain west of the Bay Bridge, report Alcatraz."
-      },
-      {
-        "t": 25,
-        "type": "ADD_TFR",
-        "id": "TFR-OraclePark",
-        "name": "Oracle Park TFR",
-        "polygon": [
-          [-122.394, 37.779],
-          [-122.387, 37.779],
-          [-122.387, 37.784],
-          [-122.394, 37.784],
-          [-122.394, 37.779]
-        ],
-        "minAltFt": 0,
-        "maxAltFt": 4000
-      },
-      {
-        "t": 28,
-        "type": "ATC",
-        "text": "N123AB, be advised TFR ahead, remain west of the TFR."
-      },
-      {
-        "t": 45,
-        "type": "ADD_TRAFFIC",
-        "traffic": {
-          "id": "TRAF1",
-          "lat": 37.81,
-          "lon": -122.37,
-          "altitudeFt": 1500,
-          "headingDeg": 170,
-          "groundspeedKt": 120
-        }
-      },
-      {
-        "t": 48,
-        "type": "ATC",
-        "text": "N123AB, traffic two o'clock, three miles, same altitude."
-      },
-      {
-        "t": 80,
-        "type": "ATC",
-        "text": "N123AB, resume own navigation, contact NorCal one three five point one."
+    {
+      "name": "Bay Bridge",
+      "altitude": "1,500 ft",
+      "timeSeconds": 25
+    },
+    {
+      "name": "ALCTZ",
+      "altitude": "1,500 ft",
+      "timeSeconds": 45
+    },
+    {
+      "name": "Golden Gate",
+      "altitude": "1,500 ft",
+      "timeSeconds": 80
+    }
+  ],
+  "events": [
+    {
+      "t": 5,
+      "type": "ATC",
+      "text": "N123AB, NorCal Approach, radar contact, proceed northbound along the shoreline at 1,500, remain west of the Bay Bridge, report Alcatraz."
+    },
+    {
+      "t": 25,
+      "type": "ADD_TFR",
+      "id": "TFR-OraclePark",
+      "name": "Oracle Park TFR",
+      "polygon": [
+        [-122.394, 37.779],
+        [-122.387, 37.779],
+        [-122.387, 37.784],
+        [-122.394, 37.784],
+        [-122.394, 37.779]
+      ],
+      "minAltFt": 0,
+      "maxAltFt": 4000
+    },
+    {
+      "t": 28,
+      "type": "ATC",
+      "text": "N123AB, be advised TFR ahead, remain west of the TFR."
+    },
+    {
+      "t": 45,
+      "type": "ADD_TRAFFIC",
+      "traffic": {
+        "id": "TRAF1",
+        "lat": 37.81,
+        "lon": -122.37,
+        "altitudeFt": 1500,
+        "headingDeg": 170,
+        "groundspeedKt": 120
       }
-    ]
-  }
+    },
+    {
+      "t": 48,
+      "type": "ATC",
+      "text": "N123AB, traffic two o'clock, three miles, same altitude."
+    },
+    {
+      "t": 80,
+      "type": "ATC",
+      "text": "N123AB, resume own navigation, contact NorCal one three five point one."
+    }
+  ]
+}

@@ -33,6 +33,7 @@ let originLon = defaultStartState.lon;
 let originAltitudeFt = defaultStartState.altitudeFt;
 let initialHeadingDeg = defaultStartState.headingDeg;
 let initialSpeedKt = defaultStartState.groundspeedKt;
+let initialVerticalSpeedFpm = defaultStartState.vsFpm ?? 0;
 
 // Precomputed constants
 const DEG_TO_RAD = Math.PI / 180;
@@ -80,11 +81,17 @@ let currentOriginAltitudeMeters = 0;
 
 function applyStartStateConfig(startState = {}) {
   const config = { ...defaultStartState, ...startState };
-  originLat = config.lat;
-  originLon = config.lon;
-  originAltitudeFt = config.altitudeFt;
-  initialHeadingDeg = config.headingDeg;
-  initialSpeedKt = config.groundspeedKt;
+  const toNumber = (value, fallback) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  originLat = toNumber(config.lat, defaultStartState.lat);
+  originLon = toNumber(config.lon, defaultStartState.lon);
+  originAltitudeFt = toNumber(config.altitudeFt, defaultStartState.altitudeFt);
+  initialHeadingDeg = toNumber(config.headingDeg, defaultStartState.headingDeg);
+  initialSpeedKt = toNumber(config.groundspeedKt, defaultStartState.groundspeedKt);
+  initialVerticalSpeedFpm = toNumber(config.vsFpm, defaultStartState.vsFpm ?? 0);
 }
 
 function refreshOriginAndConverters() {
@@ -118,6 +125,14 @@ function resetSimulationFromConfig() {
   }
   if (sim.value.updateOriginAltitude) {
     sim.value.updateOriginAltitude(originAltitudeMetersAbsolute);
+  }
+  if (sim.value.setInitialState) {
+    sim.value.setInitialState({
+      headingDeg: initialHeadingDeg,
+      speedKt: initialSpeedKt,
+      altitudeMeters: 0,
+      verticalSpeedFpm: initialVerticalSpeedFpm,
+    });
   }
   sim.value.reset();
   sim.value.setSpeed(initialSpeedKt);
@@ -269,6 +284,7 @@ onMounted(() => {
       initialAltitudeMeters: initialAltitudeMetersRelative, // Relative to origin (0 = at origin altitude)
       originAltitudeMeters: currentOriginAltitudeMeters, // Pass origin altitude for absolute target conversion
       initialSpeedKt,
+      initialVerticalSpeedFpm,
       onUpdate: (localState) => {
         const now = performance.now();
 
@@ -534,9 +550,6 @@ defineExpose({
     // Reset simulation to current config
     const wasRunning = sim.value.isRunning;
     resetSimulationFromConfig();
-    if (wasRunning) {
-      sim.value.start();
-    }
 
     // Clear trail
     const trailSrc = map.getSource('aircraft-trail');
@@ -580,8 +593,9 @@ defineExpose({
     // Reset map camera to initial position
     map.setCenter([originLon, originLat]);
     
-    // Restart simulation
-    sim.value.start();
+    if (wasRunning) {
+      sim.value.start();
+    }
   },
 });
 

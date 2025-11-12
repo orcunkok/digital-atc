@@ -4,8 +4,8 @@ export const defaultStartState = Object.freeze({
   altitudeFt: 400,
   headingDeg: 300,
   groundspeedKt: 160,
-  vsFpm: 1200,
-  phase: 'departure',
+  vsFpm: 0,
+  phase: 'resumeOwnNavigation',
 });
 
 
