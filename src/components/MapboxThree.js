@@ -2,19 +2,6 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import mapboxgl from 'mapbox-gl';
 
-/**
- * Creates a Three.js custom layer for Mapbox to display an aircraft GLB model
- * All position updates use local coordinates (meters relative to origin)
- * @param {Object} options - Configuration options
- * @param {mapboxgl.MercatorCoordinate} options.originMercator - Origin point in Mercator coordinates
- * @param {number} options.scale - Scale factor from origin (meterInMercatorCoordinateUnits)
- * @param {number} options.initialX - Initial x position in meters (east, default: 0)
- * @param {number} options.initialY - Initial y position in meters (north, default: 0)
- * @param {number} options.initialZ - Initial z position in meters (altitude, default: 0)
- * @param {number} options.headingDeg - Initial heading in degrees (default: 0)
- * @param {string} options.modelPath - Path to GLB model (default: '/Airplane.glb')
- * @returns {Object} Mapbox custom layer object
- */
 export function createAircraftLayer({
   originMercator,
   scale,
@@ -24,7 +11,6 @@ export function createAircraftLayer({
   headingDeg = 0,
   modelPath = '/Airplane.glb',
 }) {
-  // Helper function for degree-to-radian conversion
   const DEG_TO_RAD = Math.PI / 180;
   const toRadians = (deg) => deg * DEG_TO_RAD;
 
@@ -32,27 +18,22 @@ export function createAircraftLayer({
     id: 'aircraft-3d-layer',
     type: 'custom',
     renderingMode: '3d',
+
     onAdd: function (map, gl) {
       this.camera = new THREE.Camera();
       this.scene = new THREE.Scene();
 
-      // Store origin and scale for coordinate conversion
       this.originMercator = originMercator;
       this.scale = scale;
-
-      // Add directional light (from above - positive Z is up in this coordinate system)
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
-      directionalLight.position.set(10000, -6000000, 10000).normalize();
-      this.scene.add(directionalLight);
-
-      // Add ambient light
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-      this.scene.add(ambientLight);
-
-      this.aircraft = null;
       this.map = map;
 
-      // Use the Mapbox GL JS map canvas for three.js
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+      dirLight.position.set(10000, -6000000, 10000).normalize();
+      this.scene.add(dirLight);
+
+      const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+      this.scene.add(ambient);
+
       this.renderer = new THREE.WebGLRenderer({
         canvas: map.getCanvas(),
         context: gl,
@@ -60,168 +41,181 @@ export function createAircraftLayer({
         alpha: true,
         preserveDrawingBuffer: false,
       });
-
       this.renderer.autoClear = false;
-      // Use device pixel ratio but cap at 2 for performance
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       this.renderer.outputEncoding = THREE.sRGBEncoding;
       this.renderer.toneMapping = THREE.NoToneMapping;
-      // Disable shadow maps for better performance
       this.renderer.shadowMap.enabled = false;
 
-      // Load GLB model
+      // Node hierarchy:
+      // aircraftRoot (Mapbox position/scale only)
+      //  └─ headingNode (yaw only)
+      //      └─ modelFix (one-time static alignment: X=+π/2)
+      //          └─ attitude (pitch/roll only)
+      //              └─ mesh (GLTF scene)
+      this.aircraftRoot = new THREE.Group();
+      this.headingNode = new THREE.Group();
+      this.modelFix = new THREE.Group();
+      this.attitude = new THREE.Group();
+
+      this.headingNode.add(this.modelFix);
+      this.modelFix.add(this.attitude);
+      this.aircraftRoot.add(this.headingNode);
+      this.scene.add(this.aircraftRoot);
+
+      // Map scaling lives on aircraftRoot, consistent with your code
+      this.aircraftRoot.scale.set(this.scale, -this.scale, this.scale);
+
+      // One-time model alignment to match your “perfect” baseline:
+      // your working case was rotation.set(Math.PI/2, 0, 0)
+      this.modelFix.rotation.set(Math.PI / 2, Math.PI, 0);
+
+      // State cache for absolute angles (degrees)
+      this._cachedHeadingDeg = headingDeg;
+      this._cachedBankDeg = 0;
+      this._cachedPitchDeg = 0;
+
       const loader = new GLTFLoader();
       loader.load(
         modelPath,
         (gltf) => {
-          this.aircraft = gltf.scene;
+          this.mesh = gltf.scene;
 
-          // Configure textures and materials for better rendering
-          gltf.scene.traverse((child) => {
+          // Materials/textures hygiene (kept from your version)
+          this.mesh.traverse((child) => {
             if (child.isMesh) {
-              // Configure materials
-              if (child.material) {
-                // Handle both single material and material arrays
-                const materials = Array.isArray(child.material) 
-                  ? child.material 
-                  : [child.material];
-
-                materials.forEach((material) => {
-                  // Enable proper rendering
-                  material.needsUpdate = true;
-                  
-                  // Configure texture filtering if textures exist
-                  if (material.map) {
-                    material.map.minFilter = THREE.LinearMipmapLinearFilter;
-                    material.map.magFilter = THREE.LinearFilter;
-                    material.map.generateMipmaps = true;
-                    material.map.needsUpdate = true;
-                  }
-                  
-                  // Set material properties for better rendering
-                  material.side = THREE.DoubleSide;
-                  material.flatShading = false;
-                  
-                  // Ensure proper encoding
-                  if (material.map) {
-                    material.map.encoding = THREE.sRGBEncoding;
-                  }
-                });
-              }
-
-              // Ensure geometry is properly configured
-              if (child.geometry) {
-                child.geometry.computeVertexNormals();
-              }
+              const materials = Array.isArray(child.material)
+                ? child.material
+                : [child.material];
+              materials.forEach((mat) => {
+                if (!mat) return;
+                mat.needsUpdate = true;
+                if (mat.map) {
+                  mat.map.minFilter = THREE.LinearMipmapLinearFilter;
+                  mat.map.magFilter = THREE.LinearFilter;
+                  mat.map.generateMipmaps = true;
+                  mat.map.encoding = THREE.sRGBEncoding;
+                  mat.map.needsUpdate = true;
+                }
+                mat.side = THREE.DoubleSide;
+                mat.flatShading = false;
+              });
+              if (child.geometry) child.geometry.computeVertexNormals();
             }
           });
 
-          // Model origin is at right engine, offset to center the model
-          // Create parent group to hold offset (in model-local space, rotates with aircraft)
-          // x = right (east), y = forward (north), z = up
-          // Right engine is to the right of center, so offset left (negative x)
-          const modelOriginOffsetX = -50; // Offset left to center (meters, adjust as needed)
-          const modelOriginOffsetY = 0; // No fore/aft offset if model is centered
-          const modelOriginOffsetZ = 0; // No vertical offset
-          
-          // Create parent group for offset
-          this.aircraftGroup = new THREE.Group();
-          this.aircraftGroup.add(this.aircraft);
-          
-          // Apply offset in model-local space (will rotate with aircraft heading)
-          this.aircraft.position.set(
-            modelOriginOffsetX * this.scale,
-            modelOriginOffsetY * this.scale,
-            modelOriginOffsetZ * this.scale
+          // If your GLB origin is on the right engine, offset the mesh inside attitude
+          const modelOriginOffsetX = -50; // meters left; adjust if needed
+          const modelOriginOffsetY = 0;
+          const modelOriginOffsetZ = 0;
+          this.mesh.position.set(
+            modelOriginOffsetX,
+            modelOriginOffsetY,
+            modelOriginOffsetZ
           );
 
-          // Get scale factor for proper sizing
-          this.aircraft.scale.set(this.scale, -this.scale, this.scale);
+          // Add mesh under attitude node
+          this.attitude.add(this.mesh);
 
-          // Add group to scene (position and rotate the group, not the aircraft)
-          this.scene.add(this.aircraftGroup);
-
-          // Set initial position using local coordinates
-          this.updatePosition(initialX, initialY, initialZ, headingDeg);
+          // Initial placement
+          this.updatePosition(initialX, initialY, initialZ, headingDeg, 0, 0);
           map.triggerRepaint();
         },
         undefined,
-        (error) => {
-          console.error('Error loading aircraft model:', error);
+        (err) => {
+          console.error('Error loading aircraft model:', err);
         }
       );
     },
 
     render: function (gl, matrix) {
-      if (!this.aircraftGroup) {
-        return; // Don't render until model is loaded
-      }
+      if (!this.aircraftRoot) return;
 
-      // Skip rendering when camera is in top-down view (pitch close to 0)
-      const pitch = this.map.getPitch();
-      if (Math.abs(pitch) < 5) {
-        return; // Don't render aircraft in top-down view
-      }
+      const pitchView = this.map.getPitch();
+      if (Math.abs(pitchView) < 5) return;
 
-      // Update renderer size to match canvas (only when changed)
       const canvas = this.map.getCanvas();
       const width = canvas.width;
       const height = canvas.height;
-      if (this.renderer.domElement.width !== width || this.renderer.domElement.height !== height) {
+      if (
+        this.renderer.domElement.width !== width ||
+        this.renderer.domElement.height !== height
+      ) {
         this.renderer.setSize(width, height, false);
       }
 
-      // Reuse matrix object if possible to reduce allocations
-      if (!this._tempMatrix) {
-        this._tempMatrix = new THREE.Matrix4();
-      }
+      if (!this._tempMatrix) this._tempMatrix = new THREE.Matrix4();
       this._tempMatrix.fromArray(matrix);
       this.camera.projectionMatrix = this._tempMatrix;
 
       this.renderer.resetState();
       this.renderer.render(this.scene, this.camera);
-      // Only trigger repaint if needed (Mapbox will handle most cases)
     },
 
-    /**
-     * Update aircraft position using local coordinates (meters)
-     * @param {number} x - East position in meters (relative to origin)
-     * @param {number} y - North position in meters (relative to origin)
-     * @param {number} z - Altitude in meters
-     * @param {number} headingDeg - Heading in degrees
-     * @param {number} bankAngleDeg - Bank angle in degrees (positive = right wing down)
-     * @param {number} pitchAngleDeg - Pitch angle in degrees (positive = nose up)
-     */
-    updatePosition: function (x, y, z, headingDeg, bankAngleDeg = 0, pitchAngleDeg = 0) {
-      if (!this.aircraftGroup) {
-        return; // Aircraft not loaded yet
-      }
+    // Absolute setter you can call from your sim/inputs
+    // headingDeg: yaw (compass), bankAngleDeg: roll (right wing down +),
+    // pitchAngleDeg: pitch (nose up +). No yaw applied to attitude.
+    updatePosition: function (
+      x,
+      y,
+      z,
+      headingDeg,
+      bankAngleDeg = 0,
+      pitchAngleDeg = 0
+    ) {
+      if (!this.aircraftRoot) return;
 
-      // Convert local coordinates (meters) to Mercator coordinates
-      // x = east (meters), y = north (meters), z = altitude (meters)
+      // Position in mercator meters
       const mercatorX = this.originMercator.x + x * this.scale;
       const mercatorY = this.originMercator.y + y * this.scale;
       const mercatorZ = this.originMercator.z + z * this.scale;
+      this.aircraftRoot.position.set(mercatorX, mercatorY, mercatorZ);
 
-      // Update position in Mercator space (position the group, not the aircraft)
-      this.aircraftGroup.position.set(mercatorX, mercatorY, mercatorZ);
+      // Cache angles
+      this._cachedHeadingDeg = headingDeg ?? this._cachedHeadingDeg;
+      this._cachedBankDeg = bankAngleDeg ?? this._cachedBankDeg;
+      this._cachedPitchDeg = pitchAngleDeg ?? this._cachedPitchDeg;
 
-      // Update heading, pitch, and bank angle
-      // Rotation order: pitch (X), yaw (Y), roll (Z)
-      // Pitch: -90° to make aircraft horizontal, plus pitch angle (positive = nose up)
-      // Yaw: heading rotation
-      // Roll: bank angle (positive = right wing down)
-      const headingRad = toRadians(headingDeg);
-      const bankAngleRad = toRadians(bankAngleDeg);
-      const pitchAngleRad = toRadians(pitchAngleDeg);
-      const yawWithModelOffset = -headingRad + Math.PI; // Model faces -Y by default, rotate 180°
-      this.aircraftGroup.rotation.set(-Math.PI / 2 - pitchAngleRad, yawWithModelOffset, -bankAngleRad);
+      // Apply yaw (heading) on headingNode ONLY
+      // Mapbox east=x, north=y; we keep your previous sign convention if needed.
+      const headingRad = toRadians(this._cachedHeadingDeg);
+      // If your previous code needed +π or sign flips, tweak here.
+      this.headingNode.rotation.set(0, 0, 0);
+      // Yaw around local Z of headingNode is not desired here (we want compass heading in XY plane).
+      // Use rotation around Z? In this Mercator setup, heading should rotate around +Z (up).
+      // So apply on headingNode.rotateZ:
+      this.headingNode.rotation.z = -headingRad;
 
-      // Trigger repaint
+      // Apply pitch and roll on attitude ONLY (no yaw here)
+      const bankRad = toRadians(this._cachedBankDeg);
+      const pitchRad = toRadians(this._cachedPitchDeg);
+
+      // We want: pitch about local X, roll about local Z
+      // Use a fixed Euler order where X = pitch and Z = roll, and Y=0.
+      // 'ZXY' works: euler(x=pitch, y=0, z=roll)
+      if (!this._attEuler) this._attEuler = new THREE.Euler(0, 0, 0, 'ZXY');
+      this._attEuler.set(-pitchRad, 0, bankRad); // right wing down positive => roll negative around Z
+      this.attitude.quaternion.setFromEuler(this._attEuler).normalize();
+
       this.map.triggerRepaint();
+    },
+
+    // Convenience method if you just want to set attitude elsewhere (WASD)
+    setAttitudeDegrees: function (pitchDeg, bankDeg) {
+      this.updatePosition(
+        0,
+        0,
+        0,
+        this._cachedHeadingDeg,
+        bankDeg,
+        pitchDeg
+      );
+    },
+
+    onRemove: function () {
+      // Cleanup if needed
     },
   };
 
   return layer;
 }
-
