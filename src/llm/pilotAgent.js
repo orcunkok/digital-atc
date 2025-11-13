@@ -43,6 +43,18 @@ function escapeDoubleQuotes(text) {
   return text.replace(/"/g, '\\"');
 }
 
+function formatTraffic(traffic) {
+  if (!traffic || traffic.length === 0) {
+    return 'None';
+  }
+  return traffic
+    .map(
+      (t) =>
+        `ID ${t.id}: lat ${t.lat.toFixed(4)}, lon ${t.lon.toFixed(4)}, altitude ${t.altitudeFt} ft, heading ${t.headingDeg}°, speed ${t.groundspeedKt} kt`
+    )
+    .join('; ');
+}
+
 function buildDeveloperPrompt(request) {
   let prompt = developerPromptTemplate;
   prompt = replaceAll(prompt, '{{CONTENTS_OF../schemas/response.schema.json}}', responseSchemaString);
@@ -54,6 +66,7 @@ function buildDeveloperPrompt(request) {
   prompt = replaceAll(prompt, '{headingDeg}', String(request.state.headingDeg));
   prompt = replaceAll(prompt, '{groundspeedKt}', String(request.state.groundspeedKt));
   prompt = replaceAll(prompt, '{vsFpm}', String(request.state.vsFpm));
+  prompt = replaceAll(prompt, '{traffic}', formatTraffic(request.traffic));
   prompt = replaceAll(prompt, '{atcText}', escapeDoubleQuotes(request.atcText));
   return prompt.trim();
 }

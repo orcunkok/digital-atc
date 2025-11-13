@@ -70,13 +70,13 @@
       "text": "N123AB, Oracle Park TFR ahead, remain west of the stadium, report abeam Bay Bridge."
     },
     {
-      "t": 53,
+      "t": 55,
       "type": "ADD_TRAFFIC",
       "traffic": {
         "id": "TOUR1",
-        "lat": 37.76,
-        "lon": -122.28,
-        "altitudeFt": 500,
+        "lat": 37.80,
+        "lon": -122.29,
+        "altitudeFt": 3000,
         "headingDeg": 200,
         "groundspeedKt": 60,
         "modelType": "helicopter"
@@ -88,7 +88,7 @@
       "text": "N123AB, traffic two o'clock, two miles, same altitude, sightseeing helicopter. Reduce speed to one eight zero knots and maintain visual separation."
     },
     {
-      "t": 80,
+      "t": 90,
       "type": "ATC",
       "text": "N123AB, continue right heading zero one zero to round Alcatraz, keep it tight along the shoreline, maintain three thousand."
     },

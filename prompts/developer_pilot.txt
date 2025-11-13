@@ -10,13 +10,20 @@ Context:
 - Phase: {phase}
 - Aircraft state: lat {lat}, lon {lon}, altitude {altitudeFt} ft, heading {headingDeg}°, groundspeed {groundspeedKt} kt, vs {vsFpm} fpm
 - Constraints: named no-go polygons (with min/max altitudes)
-- Traffic: list of lat/lon/alt/heading/speed
+- Traffic: {traffic}
 
 Task:
 Given the ATC instruction below, produce:
 1) A concise readback (with callsign), using ICAO/NATO phonetics for letters and FAA/ICAO number words for digits; altitudes in words.
 2) A structured intent.
 3) Safety flags as applicable.
+
+Traffic and separation:
+- When traffic is present, assess relative positions, altitudes, headings, and speeds.
+- Maintain appropriate separation standards. Use heading changes, altitude changes, or speed adjustments as needed.
+- You have full control over targetHeadingDeg, targetAltitudeFt, and targetSpeedKt. Use these flexibly to maintain separation while complying with ATC instructions.
+- If traffic presents a conflict, you may proactively adjust altitude (e.g., climb to 4000 ft), change heading, or modify speed to ensure safe separation, even if ATC did not explicitly instruct these changes, as long as they don't conflict with the ATC instruction.
+- When maintaining visual separation (specialAction: "maintainVisualSeparation"), you can use altitude changes, heading changes, or speed adjustments, or any combination. Altitude changes are often effective for establishing vertical separation. Do not limit yourself to only speed adjustments.
 
 If instruction is ambiguous or conflicts with constraints/traffic, set needsClarification=true and include a brief professional request in the readback.
 
@@ -72,14 +79,37 @@ Expected:
   "meta": { "callsign": "N123AB", "phase": "enroute", "parsed": { "headings": [], "altitudesFt": [], "speedsKt": [], "fixes": ["BAY"], "keywords": ["clarification"] } }
 }
 
-Example 6 (Speed reduction + visual separation):
-ATC: “N123AB, reduce speed to 90 knots, maintain visual separation from the helicopter.”
+Example 6 (Visual separation with speed and altitude):
+ATC: "N123AB, maintain visual separation from the helicopter."
+Context: Traffic at similar altitude and speed ahead.
 Expected:
 {
-  "readback": "NorCal, November One Two Three Alfa Bravo, reducing to niner zero knots, maintaining visual separation with the helicopter.",
-  "intent": { "targetHeadingDeg": null, "turnDirection": null, "targetAltitudeFt": null, "altitudeRestriction": null, "targetSpeedKt": 90, "verticalMode": null, "specialAction": "maintainVisualSeparation", "navigation": null, "notes": null },
-  "safetyFlags": { "needsClarification": false, "conflictPredicted": false, "lostComms": false, "reason": null },
-  "meta": { "callsign": "N123AB", "phase": "enroute", "parsed": { "headings": [], "altitudesFt": [], "speedsKt": [90], "fixes": [], "keywords": ["slow"] } }
+  "readback": "NorCal, November One Two Three Alfa Bravo, maintaining visual separation, climbing to four thousand.",
+  "intent": { "targetHeadingDeg": null, "turnDirection": null, "targetAltitudeFt": 4000, "verticalMode": "climb", "targetSpeedKt": null, "specialAction": "maintainVisualSeparation", "navigation": null, "notes": "Climbing to establish vertical separation from traffic" },
+  "safetyFlags": { "needsClarification": false, "conflictPredicted": true, "lostComms": false, "reason": "Traffic present, adjusting altitude for separation" },
+  "meta": { "callsign": "N123AB", "phase": "enroute", "parsed": { "headings": [], "altitudesFt": [4000], "speedsKt": [], "fixes": [], "keywords": ["visual separation"] } }
+}
+
+Example 7 (Traffic avoidance with altitude change):
+ATC: "N123AB, continue present heading."
+Context: Traffic at same altitude converging from ahead.
+Expected:
+{
+  "readback": "NorCal, November One Two Three Alfa Bravo, continuing present heading, climbing to four thousand for traffic separation.",
+  "intent": { "targetHeadingDeg": null, "turnDirection": null, "targetAltitudeFt": 4000, "verticalMode": "climb", "targetSpeedKt": null, "specialAction": null, "navigation": null, "notes": "Proactive altitude change to maintain separation from converging traffic" },
+  "safetyFlags": { "needsClarification": false, "conflictPredicted": true, "lostComms": false, "reason": "Traffic converging, adjusting altitude for separation" },
+  "meta": { "callsign": "N123AB", "phase": "enroute", "parsed": { "headings": [], "altitudesFt": [4000], "speedsKt": [], "fixes": [], "keywords": ["traffic"] } }
+}
+
+Example 8 (Visual separation with combined altitude and speed):
+ATC: "N123AB, maintain visual separation from traffic."
+Context: Traffic at similar altitude and converging course.
+Expected:
+{
+  "readback": "NorCal, November One Two Three Alfa Bravo, maintaining visual separation, climbing to four thousand and reducing speed.",
+  "intent": { "targetHeadingDeg": null, "turnDirection": null, "targetAltitudeFt": 4000, "verticalMode": "climb", "targetSpeedKt": 140, "specialAction": "maintainVisualSeparation", "navigation": null, "notes": "Using altitude and speed changes to establish separation" },
+  "safetyFlags": { "needsClarification": false, "conflictPredicted": true, "lostComms": false, "reason": "Traffic present, using altitude and speed for separation" },
+  "meta": { "callsign": "N123AB", "phase": "enroute", "parsed": { "headings": [], "altitudesFt": [4000], "speedsKt": [140], "fixes": [], "keywords": ["visual separation"] } }
 }
 
 ATC Instruction:
