@@ -80,6 +80,15 @@ function computeShadowVertices(x, y, headingRad) {
   };
 }
 
+// Helper to convert shadow vertices to coordinates
+function shadowVerticesToCoords(vertices) {
+  return {
+    nose: localToLatLon(vertices.nose[0], vertices.nose[1], SHADOW_ELEVATION),
+    left: localToLatLon(vertices.left[0], vertices.left[1], SHADOW_ELEVATION),
+    right: localToLatLon(vertices.right[0], vertices.right[1], SHADOW_ELEVATION),
+  };
+}
+
 let pendingStartState = { ...defaultStartState };
 let currentOriginAltitudeMeters = 0;
 
@@ -98,6 +107,18 @@ function applyStartStateConfig(startState = {}) {
   initialVerticalSpeedFpm = toNumber(config.vsFpm, defaultStartState.vsFpm ?? 0);
 }
 
+// Helper to update all layers with new origin/scale
+function updateLayersOrigin() {
+  if (aircraftLayer) {
+    aircraftLayer.originMercator = originMercator;
+    aircraftLayer.scale = meterScale;
+  }
+  if (trafficLayer) {
+    trafficLayer.originMercator = originMercator;
+    trafficLayer.scale = meterScale;
+  }
+}
+
 function refreshOriginAndConverters() {
   if (!map) return null;
   const originAltitudeMetersAbsolute = originAltitudeFt * FT_TO_M;
@@ -114,14 +135,7 @@ function refreshOriginAndConverters() {
     const lngLat = mercatorCoord.toLngLat();
     return [lngLat.lng, lngLat.lat];
   };
-  if (aircraftLayer) {
-    aircraftLayer.originMercator = originMercator;
-    aircraftLayer.scale = meterScale;
-  }
-  if (trafficLayer) {
-    trafficLayer.originMercator = originMercator;
-    trafficLayer.scale = meterScale;
-  }
+  updateLayersOrigin();
   currentOriginAltitudeMeters = originAltitudeMetersAbsolute;
   return originAltitudeMetersAbsolute;
 }
@@ -398,11 +412,8 @@ onMounted(() => {
           lastShadowUpdate = now;
 
           const headingRad = toRadians(localState.headingDeg);
-          const { nose, left, right } = computeShadowVertices(localState.x, localState.y, headingRad);
-
-          const noseCoord = localToLatLon(nose[0], nose[1], SHADOW_ELEVATION);
-          const leftCoord = localToLatLon(left[0], left[1], SHADOW_ELEVATION);
-          const rightCoord = localToLatLon(right[0], right[1], SHADOW_ELEVATION);
+          const vertices = computeShadowVertices(localState.x, localState.y, headingRad);
+          const coords = shadowVerticesToCoords(vertices);
 
           shadowSource.setData({
             type: 'Feature',
@@ -412,7 +423,7 @@ onMounted(() => {
             },
             geometry: {
               type: 'Polygon',
-              coordinates: [[noseCoord, leftCoord, rightCoord, noseCoord]],
+              coordinates: [[coords.nose, coords.left, coords.right, coords.nose]],
             },
           });
         }
@@ -526,20 +537,17 @@ onMounted(() => {
 
 // Traffic management functions
 function addTraffic(trafficData, retryCount = 0) {
-  if (!trafficLayer || !map) return;
-
-  const { id, lat, lon, altitudeFt, headingDeg, groundspeedKt, modelType } = trafficData;
-  if (!id) return;
+  if (!trafficLayer || !map || !trafficData.id) return;
 
   // Check if layer is initialized (scene exists)
-  // The scene is created in onAdd, which Mapbox calls when the layer is added
   if (!trafficLayer.scene || !trafficLayer.map) {
-    // Retry after a short delay if layer isn't ready yet (max 10 retries = 1 second)
     if (retryCount < 10) {
       setTimeout(() => addTraffic(trafficData, retryCount + 1), 100);
     }
     return;
   }
+
+  const { id, lat, lon, altitudeFt, headingDeg, groundspeedKt, modelType } = trafficData;
 
   // Convert lat/lon to local coordinates
   const localPos = latLonToLocal(lat, lon, altitudeFt);
@@ -580,9 +588,8 @@ function removeTraffic(trafficId) {
 }
 
 function updateTrafficPositions(deltaTime) {
-  if (!trafficLayer || trafficObjects.size === 0) return;
+  if (!trafficLayer || !trafficObjects.size) return;
 
-  // Update all traffic movements
   for (const [id, { movement }] of trafficObjects.entries()) {
     movement.update(deltaTime);
     const pos = movement.getPosition();
@@ -677,11 +684,8 @@ defineExpose({
     const shadowSrc = map.getSource('aircraft-shadow');
     if (shadowSrc && localToLatLon) {
       const headingRad = toRadians(initialHeadingDeg);
-      const { nose, left, right } = computeShadowVertices(0, 0, headingRad);
-
-      const noseCoord = localToLatLon(nose[0], nose[1], SHADOW_ELEVATION);
-      const leftCoord = localToLatLon(left[0], left[1], SHADOW_ELEVATION);
-      const rightCoord = localToLatLon(right[0], right[1], SHADOW_ELEVATION);
+      const vertices = computeShadowVertices(0, 0, headingRad);
+      const coords = shadowVerticesToCoords(vertices);
       
       shadowSrc.setData({
         type: 'Feature',
@@ -691,7 +695,7 @@ defineExpose({
         },
         geometry: {
           type: 'Polygon',
-          coordinates: [[noseCoord, leftCoord, rightCoord, noseCoord]],
+          coordinates: [[coords.nose, coords.left, coords.right, coords.nose]],
         },
       });
     }

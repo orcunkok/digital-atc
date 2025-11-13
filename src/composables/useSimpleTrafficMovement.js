@@ -20,17 +20,29 @@ export function useSimpleTrafficMovement({
   let x = initialX;
   let y = initialY;
   let z = initialZ;
-  let headingDegrees = headingDeg;
+  let headingDegrees = headingDeg-5; //glb origin correction
   const speedMps = speedKt * KT_TO_MPS;
+
+  // Cache sin/cos to avoid recomputation when heading doesn't change
+  let cachedHeadingDeg = headingDeg;
+  let cachedSin = Math.sin(toRadians(headingDeg));
+  let cachedCos = Math.cos(toRadians(headingDeg));
 
   function update(deltaTime) {
     if (deltaTime <= 0 || deltaTime > 0.1) return;
 
+    // Update cached sin/cos only if heading changed
+    if (headingDegrees !== cachedHeadingDeg) {
+      cachedHeadingDeg = headingDegrees;
+      const headingRad = toRadians(headingDegrees);
+      cachedSin = Math.sin(headingRad);
+      cachedCos = Math.cos(headingRad);
+    }
+
     // Move forward based on heading and speed
-    const headingRad = toRadians(headingDegrees);
     const distance = speedMps * deltaTime;
-    x += Math.sin(headingRad) * distance; // east component
-    y -= Math.cos(headingRad) * distance; // north component (Mapbox y increases southward)
+    x += cachedSin * distance; // east component
+    y -= cachedCos * distance; // north component (Mapbox y increases southward)
     // z stays constant (no vertical movement for simple traffic)
   }
 
@@ -49,6 +61,8 @@ export function useSimpleTrafficMovement({
     z = newZ;
     if (newHeadingDeg !== undefined) {
       headingDegrees = newHeadingDeg;
+      // Invalidate cache so sin/cos will be recomputed
+      cachedHeadingDeg = NaN;
     }
   }
 

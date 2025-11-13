@@ -7,12 +7,21 @@ const DEG_TO_RAD = Math.PI / 180;
 const PI_OVER_2 = Math.PI / 2;
 const PI = Math.PI;
 const PITCH_THRESHOLD = 5;
-const MODEL_ORIGIN_OFFSET_X = -50; /// aircraft X offset - east correction
+const MODEL_ORIGIN_OFFSET_X = -50; // aircraft X offset - east correction
 const HELICOPTER_ORIGIN_OFFSET_X = 930; // helicopter X offset - east correction
-const HELICOPTER_ORIGIN_OFFSET_Z = 170; // helicopter Y offset - north correction
+const HELICOPTER_ORIGIN_OFFSET_Z = 170; // helicopter Z offset - altitude correction
 const EULER_ORDER = 'ZXY';
 
 const toRadians = (deg) => deg * DEG_TO_RAD;
+
+// Reusable GLTFLoader instance (avoid creating new loader for each model)
+const gltfLoader = new GLTFLoader();
+
+// Helper to detect model type (case-insensitive, more reliable than includes)
+function getModelType(modelPath) {
+  const pathLower = modelPath.toLowerCase();
+  return pathLower.includes('helicopter') ? 'helicopter' : 'airplane';
+}
 
 /**
  * Sets up materials and textures for a Three.js mesh
@@ -42,6 +51,15 @@ function setupMeshMaterials(mesh) {
   });
 }
 
+// Precomputed offset values for performance
+const OFFSETS = {
+  airplane: { x: MODEL_ORIGIN_OFFSET_X, z: 0 },
+  helicopter: { x: HELICOPTER_ORIGIN_OFFSET_X, z: HELICOPTER_ORIGIN_OFFSET_Z },
+};
+
+// Default error handler (reused to avoid function creation)
+const defaultErrorHandler = (err) => console.error('Error loading aircraft model:', err);
+
 /**
  * Loads and sets up an aircraft model
  * @param {string} modelPath - Path to GLB model
@@ -51,22 +69,20 @@ function setupMeshMaterials(mesh) {
  * @param {Function} onError - Error callback
  */
 function loadAircraftModel(modelPath, modelType, clone, onLoad, onError) {
-  const loader = new GLTFLoader();
-  loader.load(
+  gltfLoader.load(
     modelPath,
     (gltf) => {
       const mesh = clone ? gltf.scene.clone() : gltf.scene;
       setupMeshMaterials(mesh);
 
-      // Offset mesh to align model origin (different per model type)
-      const offsetX = modelType === 'helicopter' ? HELICOPTER_ORIGIN_OFFSET_X : MODEL_ORIGIN_OFFSET_X;
-      const offsetZ = modelType === 'helicopter' ? HELICOPTER_ORIGIN_OFFSET_Z : 0;
-      mesh.position.set(offsetX, 0, offsetZ);
+      // Offset mesh to align model origin (precomputed for performance)
+      const offsets = OFFSETS[modelType] || OFFSETS.airplane;
+      mesh.position.set(offsets.x, 0, offsets.z);
 
       onLoad(mesh, modelType);
     },
     undefined,
-    onError || ((err) => console.error('Error loading aircraft model:', err))
+    onError || defaultErrorHandler
   );
 }
 
@@ -86,7 +102,9 @@ function createAircraftHierarchy(scale, modelType = 'airplane') {
   modelFix.add(attitude);
   aircraftRoot.add(headingNode);
 
-  aircraftRoot.scale.set(scale, -scale, scale);
+  // Scale helicopter by 1/2
+  const finalScale = modelType === 'helicopter' ? scale * 0.3 : scale;
+  aircraftRoot.scale.set(finalScale, -finalScale, finalScale);
   
   // Different rotation for helicopter (180 degrees correction)
   if (modelType === 'helicopter') {
@@ -118,20 +136,22 @@ function updateAircraftTransform({
     oz + z * scale
   );
 
-  // Cache angles
-  angleCache.headingDeg = headingDeg ?? angleCache.headingDeg;
-  angleCache.bankDeg = bankAngleDeg ?? angleCache.bankDeg;
-  angleCache.pitchDeg = pitchAngleDeg ?? angleCache.pitchDeg;
+  // Cache angles (update if provided, otherwise keep cached values)
+  // Using != null to check for both null and undefined, but allow 0 values
+  if (headingDeg != null) angleCache.headingDeg = headingDeg;
+  if (bankAngleDeg != null) angleCache.bankDeg = bankAngleDeg;
+  if (pitchAngleDeg != null) angleCache.pitchDeg = pitchAngleDeg;
+
+  // Precompute radians for performance
+  const headingRad = -toRadians(angleCache.headingDeg);
+  const pitchRad = -toRadians(angleCache.pitchDeg);
+  const bankRad = toRadians(angleCache.bankDeg);
 
   // Apply yaw (heading) on headingNode
-  headingNode.rotation.z = -toRadians(angleCache.headingDeg);
+  headingNode.rotation.z = headingRad;
 
   // Apply pitch and roll on attitude (ZXY Euler order)
-  attEuler.set(
-    -toRadians(angleCache.pitchDeg),
-    0,
-    toRadians(angleCache.bankDeg)
-  );
+  attEuler.set(pitchRad, 0, bankRad);
   attitude.quaternion.setFromEuler(attEuler).normalize();
 }
 
@@ -198,7 +218,7 @@ export function createAircraftThreeLayer({
       }
 
       // Node hierarchy: aircraftRoot -> headingNode -> modelFix -> attitude -> mesh
-      const modelType = modelPath.includes('Helicopter') ? 'helicopter' : 'airplane';
+      const modelType = getModelType(modelPath);
       const hierarchy = createAircraftHierarchy(this.scale, modelType);
       this.aircraftRoot = hierarchy.aircraftRoot;
       this.headingNode = hierarchy.headingNode;
@@ -261,18 +281,24 @@ export function createAircraftThreeLayer({
     ) {
       if (!this.aircraftRoot) return;
 
-      const angleCache = {
-        headingDeg: this._cachedHeadingDeg,
-        bankDeg: this._cachedBankDeg,
-        pitchDeg: this._cachedPitchDeg,
-      };
+      // Reuse cached angles object to avoid allocation
+      if (!this._angleCache) {
+        this._angleCache = {
+          headingDeg: this._cachedHeadingDeg,
+          bankDeg: this._cachedBankDeg,
+          pitchDeg: this._cachedPitchDeg,
+        };
+      }
+      this._angleCache.headingDeg = this._cachedHeadingDeg;
+      this._angleCache.bankDeg = this._cachedBankDeg;
+      this._angleCache.pitchDeg = this._cachedPitchDeg;
 
       updateAircraftTransform(
         {
           aircraftRoot: this.aircraftRoot,
           headingNode: this.headingNode,
           attitude: this.attitude,
-          angleCache,
+          angleCache: this._angleCache,
           attEuler: this._attEuler,
           originMercator: this.originMercator,
           scale: this.scale,
@@ -286,9 +312,9 @@ export function createAircraftThreeLayer({
       );
 
       // Update cached angles from the cache object (mutated by updateAircraftTransform)
-      this._cachedHeadingDeg = angleCache.headingDeg;
-      this._cachedBankDeg = angleCache.bankDeg;
-      this._cachedPitchDeg = angleCache.pitchDeg;
+      this._cachedHeadingDeg = this._angleCache.headingDeg;
+      this._cachedBankDeg = this._angleCache.bankDeg;
+      this._cachedPitchDeg = this._angleCache.pitchDeg;
 
       this.map.triggerRepaint();
     },
@@ -311,7 +337,7 @@ export function createAircraftThreeLayer({
       } = config;
 
       // Determine model type and create hierarchy
-      const modelType = modelPath.includes('Helicopter') ? 'helicopter' : 'airplane';
+      const modelType = getModelType(modelPath);
       const { aircraftRoot, headingNode, modelFix, attitude } = createAircraftHierarchy(this.scale, modelType);
       this.scene.add(aircraftRoot);
 

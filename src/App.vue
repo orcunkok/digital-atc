@@ -648,6 +648,7 @@ function applyScenarioStartState(scenario) {
   if (!scenario) return;
   const start = { ...defaultStartState, ...(scenario.startState || {}) };
   pendingStartState.value = start;
+  
   simState.value = {
     ...simState.value,
     callsign: scenario.callsign || simState.value.callsign,
@@ -664,9 +665,7 @@ function applyScenarioStartState(scenario) {
     lon: start.lon,
   };
 
-  if (mapRef.value?.initializeFromScenario) {
-    mapRef.value.initializeFromScenario(start);
-  }
+  mapRef.value?.initializeFromScenario?.(start);
 }
 
 function toggleLayer(layer) {
@@ -754,48 +753,38 @@ async function processAtcInstruction(rawText) {
 
     applyIntentToSim(mapRef.value?.sim, result.intent, simState);
   } catch (error) {
-    // Check if this is an OpenRouter request failure
-    const openAiError =
-      error instanceof OpenRouterClientError
-        ? error
-        : error instanceof PilotAgentError && error.cause instanceof OpenRouterClientError
-        ? error.cause
-        : error?.cause instanceof OpenRouterClientError
-        ? error.cause
-        : null;
+    // Extract OpenRouter error from chain
+    const getOpenRouterError = (err) => {
+      if (err instanceof OpenRouterClientError) return err;
+      if (err instanceof PilotAgentError && err.cause instanceof OpenRouterClientError) return err.cause;
+      if (err?.cause instanceof OpenRouterClientError) return err.cause;
+      return null;
+    };
 
-    const isOpenAiError =
-      openAiError !== null ||
-      error instanceof OpenRouterClientError ||
-      (error instanceof PilotAgentError && error.cause instanceof OpenRouterClientError) ||
-      (error?.cause instanceof OpenRouterClientError) ||
-      (error?.message === 'OpenRouter request failed.');
+    const openRouterError = getOpenRouterError(error);
+    const isOpenRouterError = openRouterError !== null || error?.message === 'OpenRouter request failed.';
 
-    if (isOpenAiError) {
-      // Check if it's specifically a key-related error
-      const errorToCheck = openAiError || error;
-      const isKeyError =
-        errorToCheck &&
-        (errorToCheck.status === 401 || // Unauthorized
-          errorToCheck.status === 403 || // Forbidden (could be key-related)
-          errorToCheck.code === 'missing_api_key' ||
-          errorToCheck.code === 'api_key_not_loaded' ||
-          (errorToCheck.details?.error?.code === 'invalid_api_key') ||
-          (errorToCheck.details?.error?.message?.toLowerCase().includes('api key')) ||
-          (errorToCheck.details?.error?.message?.toLowerCase().includes('authentication')) ||
-          (errorToCheck.message?.toLowerCase().includes('api key')) ||
-          (errorToCheck.message?.toLowerCase().includes('authentication')));
+    if (isOpenRouterError) {
+      const err = openRouterError || error;
+      const isKeyError = err && (
+        err.status === 401 || err.status === 403 ||
+        err.code === 'missing_api_key' || err.code === 'api_key_not_loaded' ||
+        err.details?.error?.code === 'invalid_api_key' ||
+        err.details?.error?.message?.toLowerCase().includes('api key') ||
+        err.details?.error?.message?.toLowerCase().includes('authentication') ||
+        err.message?.toLowerCase().includes('api key') ||
+        err.message?.toLowerCase().includes('authentication')
+      );
 
       openAiRequestFailed.value = true;
       openAiKeyFailed.value = Boolean(isKeyError);
-      errorMessage.value = ''; // Don't show error under ATC input for OpenAI errors
+      errorMessage.value = '';
     } else {
-      const message =
-        error instanceof PilotAgentError || error?.name === 'PilotAgentError'
-          ? error.message
-          : error instanceof Error
-          ? error.message
-          : 'Pilot agent failed.';
+      const message = error instanceof PilotAgentError || error?.name === 'PilotAgentError'
+        ? error.message
+        : error instanceof Error
+        ? error.message
+        : 'Pilot agent failed.';
 
       errorMessage.value = message;
       openAiRequestFailed.value = false;
@@ -815,10 +804,6 @@ const scenarioRunner = createScenarioRunner({
     constraints.value = { noGoAreas: [] };
     traffic.value = [];
     applyScenarioStartState(scenario);
-    // Initialize map/sim from scenario startState
-    if (scenario?.startState && mapRef.value?.initializeFromScenario) {
-      mapRef.value.initializeFromScenario(scenario.startState);
-    }
   },
   onReset: () => {
     timelineElapsed.value = 0;
@@ -829,9 +814,6 @@ const scenarioRunner = createScenarioRunner({
     const scenario = scenarioRunner.state.activeScenario.value;
     if (scenario) {
       applyScenarioStartState(scenario);
-      if (scenario.startState && mapRef.value?.initializeFromScenario) {
-        mapRef.value.initializeFromScenario(scenario.startState);
-      }
     }
   },
   onAtc: (text) => {
@@ -862,21 +844,14 @@ const scenarioRunner = createScenarioRunner({
   },
   onAddTraffic: (contact) => {
     const entry = { ...contact };
-    traffic.value = [
-      ...traffic.value.filter((item) => item.id !== entry.id),
-      entry,
-    ];
-    if (mapRef.value?.addTraffic) {
-      mapRef.value.addTraffic(entry);
-    }
+    traffic.value = traffic.value.filter((item) => item.id !== entry.id);
+    traffic.value.push(entry);
+    mapRef.value?.addTraffic?.(entry);
   },
   onRemoveTraffic: (trafficId) => {
     const id = typeof trafficId === 'object' ? trafficId.id : trafficId;
     traffic.value = traffic.value.filter((item) => item.id !== id);
-    // Remove traffic from map
-    if (mapRef.value?.removeTraffic) {
-      mapRef.value.removeTraffic(id);
-    }
+    mapRef.value?.removeTraffic?.(id);
   },
   onTick: (elapsedSeconds, durationSeconds) => {
     timelineDurationSeconds.value = durationSeconds;
@@ -892,7 +867,7 @@ const currentEventIndex = scenarioRunner.state.currentEventIndex;
 
 function toggleFollow() {
   mapRef.value?.toggleFollow?.();
-  // isFollowing is updated internally by toggleFollow, sync after a brief delay
+  // Sync after brief delay to allow internal update
   setTimeout(() => {
     isFollowing.value = mapRef.value?.isFollowing ?? isFollowing.value;
   }, 0);

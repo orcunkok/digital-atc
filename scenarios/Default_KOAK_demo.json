@@ -74,11 +74,11 @@
       "type": "ADD_TRAFFIC",
       "traffic": {
         "id": "TOUR1",
-        "lat": 37.7290,
-        "lon": -122.2270,
-        "altitudeFt": 1500,
-        "headingDeg": 0,
-        "groundspeedKt": 100,
+        "lat": 37.76,
+        "lon": -122.28,
+        "altitudeFt": 500,
+        "headingDeg": 200,
+        "groundspeedKt": 60,
         "modelType": "helicopter"
       }
     },
