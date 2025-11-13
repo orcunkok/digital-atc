@@ -33,12 +33,27 @@ export async function callOpenRouter({
     );
   }
 
+  // Optimize for speed: prioritize latency (time to first token) over price
+  // See https://openrouter.ai/docs/features/provider-routing
+  // Configurable via VITE_OPENROUTER_PROVIDER_SORT: 'latency', 'throughput', or 'price'
+  const providerSort = appConfig.openRouter?.providerSort || 'latency';
+  const providerConfig = {
+    // Sort by latency/throughput to prioritize fastest response time
+    // 'latency' = lowest time to first token (best for reducing response time)
+    // 'throughput' = highest tokens per second (best for long responses)
+    // 'price' = cheapest (default OpenRouter behavior)
+    sort: providerSort,
+    // Keep fallbacks enabled for reliability, but they'll also be sorted by the chosen metric
+    allow_fallbacks: true,
+  };
+
   const payload = {
     model: appConfig.openRouter?.model || 'openrouter/auto',
     messages,
     temperature,
     max_tokens: 600,
     response_format: responseFormat,
+    provider: providerConfig,
   };
 
   const headers = {

@@ -7,7 +7,11 @@ const hasOpenRouterKey =
   Boolean(rawConfig.hasOpenRouterKey === true) || hasEnv(import.meta.env.VITE_OPENROUTER_API_KEY);
 
 const openRouterModel =
-  envOrEmpty(import.meta.env.VITE_OPENROUTER_MODEL) || rawConfig.openRouterModel || 'openrouter/auto';
+  envOrEmpty(import.meta.env.VITE_OPENROUTER_MODEL) || rawConfig.openRouterModel || 'openai/gpt-3.5-turbo-instruct';
+
+// Provider routing optimization: 'latency' (fastest response), 'throughput' (highest tokens/sec), or 'price' (cheapest)
+const openRouterProviderSort =
+  envOrEmpty(import.meta.env.VITE_OPENROUTER_PROVIDER_SORT) || rawConfig.openRouterProviderSort || 'latency';
 
 export const appConfig = {
   mapboxToken: import.meta.env.VITE_MAPBOX_TOKEN,
@@ -16,6 +20,7 @@ export const appConfig = {
     model: openRouterModel,
     baseUrl: envOrEmpty(import.meta.env.VITE_OPENROUTER_BASE_URL) || 'https://openrouter.ai/api/v1',
     title: envOrEmpty(import.meta.env.VITE_OPENROUTER_APP_TITLE) || 'Digital ATC',
+    providerSort: openRouterProviderSort,
   },
 };
 
