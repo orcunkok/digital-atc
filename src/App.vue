@@ -561,6 +561,11 @@ function getElapsedSeconds() {
   return (performance.now() - sessionStart.value) / 1000;
 }
 
+function getSimElapsedSeconds() {
+  // Use scenario runner's elapsed time which respects pause/resume
+  return scenarioRunner?.state?.elapsed?.value ?? 0;
+}
+
 function formatTimestamp(seconds) {
   if (typeof seconds !== 'number' || Number.isNaN(seconds)) return '--:--';
   const total = Math.max(0, seconds);
@@ -581,7 +586,7 @@ function updateTimelineProgress(elapsedSeconds = getElapsedSeconds()) {
   elapsedLabel.value = formatTimestamp(elapsedSeconds);
 }
 
-function addTranscriptEntry(speaker, text, elapsedSeconds = getElapsedSeconds()) {
+function addTranscriptEntry(speaker, text, elapsedSeconds = getSimElapsedSeconds()) {
   if (!text) return;
   messageCounter += 1;
   transcript.value.push({
