@@ -24,7 +24,9 @@ export function createScenarioRunner(callbacks = {}) {
   let nextEventPointer = 0;
 
   function resetEventStatuses() {
-    events.value = (activeScenario.value?.events || []).map((evt, index) => ({
+    // Sort events by time to ensure they're processed in chronological order
+    const sortedEvents = [...(activeScenario.value?.events || [])].sort((a, b) => (a.t || 0) - (b.t || 0));
+    events.value = sortedEvents.map((evt, index) => ({
       ...evt,
       index,
       status: 'pending',

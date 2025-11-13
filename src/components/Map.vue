@@ -13,6 +13,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { createAircraftThreeLayer } from '../composables/useAircraftThreeLayer';
 import { useAircraftSimulation } from '../composables/useAircraftSimulation';
+import { useSimpleTrafficMovement } from '../composables/useSimpleTrafficMovement';
 import { simState } from '../composables/useSimState';
 import { defaultStartState } from '../sim/defaultStartState';
 
@@ -20,12 +21,15 @@ const mapContainer = ref(null);
 const isFollowing = ref(false);
 let map = null;
 let aircraftLayer = null;
+let trafficLayer = null;
+const trafficObjects = new Map(); // id -> { movement, modelPath }
 const sim = ref(null);
 let originMercator = null;
 let meterScale = null;
 let isTopDownView = false;
 let cleanupMapEvents = null;
 let localToLatLon = null;
+let lastTrafficUpdateTime = null;
 
 // Aircraft origin - will be set from scenario
 let originLat = defaultStartState.lat;
@@ -114,8 +118,22 @@ function refreshOriginAndConverters() {
     aircraftLayer.originMercator = originMercator;
     aircraftLayer.scale = meterScale;
   }
+  if (trafficLayer) {
+    trafficLayer.originMercator = originMercator;
+    trafficLayer.scale = meterScale;
+  }
   currentOriginAltitudeMeters = originAltitudeMetersAbsolute;
   return originAltitudeMetersAbsolute;
+}
+
+function latLonToLocal(lat, lon, altitudeFt) {
+  if (!originMercator || !meterScale) return { x: 0, y: 0, z: 0 };
+  const altitudeMeters = altitudeFt * FT_TO_M;
+  const mercatorCoord = mapboxgl.MercatorCoordinate.fromLngLat([lon, lat], altitudeMeters);
+  const x = (mercatorCoord.x - originMercator.x) / meterScale;
+  const y = (mercatorCoord.y - originMercator.y) / meterScale;
+  const z = (mercatorCoord.z - originMercator.z) / meterScale;
+  return { x, y, z };
 }
 
 function resetSimulationFromConfig() {
@@ -188,6 +206,7 @@ onMounted(() => {
 
     // Create Three.js layer with local coordinates
     aircraftLayer = createAircraftThreeLayer({
+      id: 'aircraft-3d-layer',
       originMercator,
       scale: meterScale,
       initialX: 0, // Start at origin (0 meters east)
@@ -196,6 +215,19 @@ onMounted(() => {
       headingDeg: initialHeadingDeg,
     });
     map.addLayer(aircraftLayer);
+
+    // Create traffic layer (empty initially, will add models as needed)
+    trafficLayer = createAircraftThreeLayer({
+      id: 'traffic-3d-layer',
+      originMercator,
+      scale: meterScale,
+      initialX: 0,
+      initialY: 0,
+      initialZ: 0,
+      headingDeg: 0,
+      skipInitialModel: true, // Don't load default model - we'll add traffic models dynamically
+    });
+    map.addLayer(trafficLayer);
 
     // Create GeoJSON source for breadcrumb trail
     map.addSource('aircraft-trail', {
@@ -287,6 +319,17 @@ onMounted(() => {
       initialVerticalSpeedFpm,
       onUpdate: (localState) => {
         const now = performance.now();
+
+        // Update traffic positions
+        if (lastTrafficUpdateTime === null) {
+          lastTrafficUpdateTime = now;
+        } else {
+          const deltaTime = (now - lastTrafficUpdateTime) / 1000;
+          if (deltaTime > 0 && deltaTime <= 0.1) {
+            updateTrafficPositions(deltaTime);
+          }
+          lastTrafficUpdateTime = now;
+        }
 
         // Update shared sim state
 
@@ -481,6 +524,72 @@ onMounted(() => {
   });
 });
 
+// Traffic management functions
+function addTraffic(trafficData, retryCount = 0) {
+  if (!trafficLayer || !map) return;
+
+  const { id, lat, lon, altitudeFt, headingDeg, groundspeedKt, modelType } = trafficData;
+  if (!id) return;
+
+  // Check if layer is initialized (scene exists)
+  // The scene is created in onAdd, which Mapbox calls when the layer is added
+  if (!trafficLayer.scene || !trafficLayer.map) {
+    // Retry after a short delay if layer isn't ready yet (max 10 retries = 1 second)
+    if (retryCount < 10) {
+      setTimeout(() => addTraffic(trafficData, retryCount + 1), 100);
+    }
+    return;
+  }
+
+  // Convert lat/lon to local coordinates
+  const localPos = latLonToLocal(lat, lon, altitudeFt);
+  
+  // Determine model path
+  const modelPath = modelType === 'helicopter' ? '/Helicopter.glb' : '/Airplane.glb';
+
+  // Create simple movement tracker
+  const movement = useSimpleTrafficMovement({
+    initialX: localPos.x,
+    initialY: localPos.y,
+    initialZ: localPos.z,
+    headingDeg: headingDeg || 0,
+    speedKt: groundspeedKt || 100,
+  });
+
+  // Store traffic object
+  trafficObjects.set(id, { movement, modelPath });
+
+  // Add model to traffic layer
+  trafficLayer.addAircraftModel(id, {
+    initialX: localPos.x,
+    initialY: localPos.y,
+    initialZ: localPos.z,
+    headingDeg: headingDeg || 0,
+    modelPath,
+  });
+}
+
+function removeTraffic(trafficId) {
+  if (!trafficLayer) return;
+
+  // Remove from traffic layer
+  trafficLayer.removeAircraftModel(trafficId);
+
+  // Remove from storage
+  trafficObjects.delete(trafficId);
+}
+
+function updateTrafficPositions(deltaTime) {
+  if (!trafficLayer || trafficObjects.size === 0) return;
+
+  // Update all traffic movements
+  for (const [id, { movement }] of trafficObjects.entries()) {
+    movement.update(deltaTime);
+    const pos = movement.getPosition();
+    trafficLayer.updateAircraftPosition(id, pos.x, pos.y, pos.z, pos.headingDeg, 0, 0);
+  }
+}
+
 // Expose map and sim for external control
 defineExpose({
   map,
@@ -590,6 +699,12 @@ defineExpose({
     // Reset aircraft position in Three.js
     aircraftLayer?.updatePosition?.(0, 0, 0, initialHeadingDeg, 0, 0);
     
+    // Clear all traffic
+    for (const id of trafficObjects.keys()) {
+      removeTraffic(id);
+    }
+    lastTrafficUpdateTime = null;
+    
     // Reset map camera to initial position
     map.setCenter([originLon, originLat]);
     
@@ -597,6 +712,8 @@ defineExpose({
       sim.value.start();
     }
   },
+  addTraffic,
+  removeTraffic,
 });
 
 onUnmounted(() => {

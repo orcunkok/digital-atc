@@ -866,10 +866,17 @@ const scenarioRunner = createScenarioRunner({
       ...traffic.value.filter((item) => item.id !== entry.id),
       entry,
     ];
+    if (mapRef.value?.addTraffic) {
+      mapRef.value.addTraffic(entry);
+    }
   },
   onRemoveTraffic: (trafficId) => {
     const id = typeof trafficId === 'object' ? trafficId.id : trafficId;
     traffic.value = traffic.value.filter((item) => item.id !== id);
+    // Remove traffic from map
+    if (mapRef.value?.removeTraffic) {
+      mapRef.value.removeTraffic(id);
+    }
   },
   onTick: (elapsedSeconds, durationSeconds) => {
     timelineDurationSeconds.value = durationSeconds;

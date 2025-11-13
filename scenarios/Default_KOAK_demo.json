@@ -70,15 +70,16 @@
       "text": "N123AB, Oracle Park TFR ahead, remain west of the stadium, report abeam Bay Bridge."
     },
     {
-      "t": 55,
+      "t": 1,
       "type": "ADD_TRAFFIC",
       "traffic": {
         "id": "TOUR1",
-        "lat": 37.8105,
-        "lon": -122.364,
+        "lat": 37.7290,
+        "lon": -122.2270,
         "altitudeFt": 1500,
-        "headingDeg": 200,
-        "groundspeedKt": 100
+        "headingDeg": 0,
+        "groundspeedKt": 100,
+        "modelType": "helicopter"
       }
     },
     {

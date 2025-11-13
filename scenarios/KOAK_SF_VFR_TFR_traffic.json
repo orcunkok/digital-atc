@@ -68,7 +68,8 @@
         "lon": -122.37,
         "altitudeFt": 1500,
         "headingDeg": 170,
-        "groundspeedKt": 120
+        "groundspeedKt": 120,
+        "modelType": "airplane"
       }
     },
     {
