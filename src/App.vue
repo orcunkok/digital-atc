@@ -717,6 +717,16 @@ async function processAtcInstruction(rawText) {
   lastClearance.value = normalized;
   addTranscriptEntry('ATC', normalized);
 
+  // Filter traffic to only include schema-valid properties (remove modelType, etc.)
+  const validTraffic = (traffic.value || []).map(({ id, lat, lon, altitudeFt, headingDeg, groundspeedKt }) => ({
+    id,
+    lat,
+    lon,
+    altitudeFt,
+    headingDeg,
+    groundspeedKt,
+  }));
+
   const payload = {
     atcText: normalized,
     callsign: simState.value.callsign,
@@ -732,7 +742,7 @@ async function processAtcInstruction(rawText) {
     constraints: {
       noGoAreas: constraints.value.noGoAreas || [],
     },
-    traffic: traffic.value,
+    traffic: validTraffic,
   };
 
   try {
@@ -741,6 +751,21 @@ async function processAtcInstruction(rawText) {
     const { result, usage } = agentResponse;
 
     addTranscriptEntry('PILOT', result.readback);
+
+    // Log LLM intent for debugging
+    console.log('[Pilot Agent] Intent received:', {
+      targetAltitudeFt: result.intent?.targetAltitudeFt,
+      verticalMode: result.intent?.verticalMode,
+      targetHeadingDeg: result.intent?.targetHeadingDeg,
+      targetSpeedKt: result.intent?.targetSpeedKt,
+      specialAction: result.intent?.specialAction,
+      fullIntent: result.intent,
+    });
+    console.log('[Pilot Agent] Current state:', {
+      altitudeFt: simState.value.altitudeFt,
+      headingDeg: simState.value.headingDeg,
+      speedKt: simState.value.speedKt,
+    });
 
     safetyFlags.value = {
       needsClarification: Boolean(result.safetyFlags?.needsClarification),

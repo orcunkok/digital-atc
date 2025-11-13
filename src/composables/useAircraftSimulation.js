@@ -254,7 +254,7 @@ export function useAircraftSimulation({
         z = targetAltitudeMeters;
         pitchInput = 0;
         targetPitchAngleDeg = 0;
-        targetAltitudeFt = null; // Clear target once reached
+        pitchAngleDeg = 0
       }
     } else if (Math.abs(pitchInput) > 0.1) {
       // Calculate target pitch angle based on input
@@ -518,6 +518,7 @@ export function useAircraftSimulation({
 
     clearAltitude() {
       targetAltitudeFt = null;
+      pitchInput = 0; // Reset pitch input to level off
     },
 
     clearVerticalSpeedLimit() {
