@@ -1025,6 +1025,14 @@ onMounted(() => {
   // Add space key listener
   window.addEventListener('keydown', handleKeyPress);
 
+  // Pause simulation when window loses focus (alt-tab, etc.)
+  const handleBlur = () => {
+    if (!isPaused.value) {
+      pauseSimulation();
+    }
+  };
+  window.addEventListener('blur', handleBlur);
+
   // Check initial state after a short delay to ensure map is loaded
   setTimeout(() => {
     sessionStart.value = performance.now();
@@ -1048,6 +1056,7 @@ onMounted(() => {
   // Cleanup on unmount
   onUnmounted(() => {
     window.removeEventListener('keydown', handleKeyPress);
+    window.removeEventListener('blur', handleBlur);
     clearInterval(syncInterval);
   });
 });
